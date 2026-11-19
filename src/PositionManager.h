@@ -9,6 +9,9 @@
 
 class PositionManager {
 public:
+  static constexpr uint8_t NUM_USERS   = 2;
+  static constexpr uint8_t NUM_PRESETS = 3;
+
   enum class Mode { Idle, PresetUp, PresetDown, ManualUp, ManualDown, Stopped };
 
   struct Event {
@@ -18,31 +21,26 @@ public:
   };
   using EventCB = void (*)(const Event&);
 
-  // pinUp/pinDown: GPIOs für Richtung. activeHigh: true => HIGH=ein, false => LOW=ein
   PositionManager(int pinUp, int pinDown, bool activeHigh, float hysteresis_cm);
 
   void begin();
   void update(float current_cm);
 
-  // Presets (2 Users x 3 Presets)
-  void  setPreset(uint8_t user, uint8_t preset, float cm);
-  float getPreset(uint8_t user, uint8_t preset) const;
+  void   setPreset(uint8_t user, uint8_t preset, float cm, const String& name = "");
+  float  getPreset(uint8_t user, uint8_t preset) const;
+  String getPresetName(uint8_t user, uint8_t preset) const;
 
-  // Kommandos
-  void commandGoTo(uint8_t user, uint8_t preset); // fahre zu gespeicherter Höhe
-  void manualHold(bool upHeld, bool downHeld);    // manuell nur während gehalten
-  void stop();                                    // Not-Stopp
+  void commandGoTo(uint8_t user, uint8_t preset);
+  void manualHold(bool upHeld, bool downHeld);
+  void stop();
 
-  // Status
   Mode  mode() const { return _mode; }
   bool  hasTarget() const { return _hasTarget; }
   float targetCm() const { return _targetCm; }
 
-  // Events (für Logging/Callbacks)
   void setCallback(EventCB cb) { _cb = cb; }
 
 private:
-  // Relaissteuerung
   void driveUp(bool on);
   void driveDown(bool on);
   void driveNone();
@@ -53,31 +51,25 @@ private:
   bool  _activeHigh;
   float _hyst;
 
-  float _presets[2][3] = { {180.0f,170.0f,160.0f}, {180.0f,170.0f,160.0f} };
+  float  _presets[NUM_USERS][NUM_PRESETS]     = { {110.0f, 95.0f, 75.0f}, {110.0f, 95.0f, 75.0f} };
+  String _presetNames[NUM_USERS][NUM_PRESETS] = { {"Stehen", "Sitzen", "Tief"}, {"Stehen", "Sitzen", "Tief"} };
 
-  // Zielverwaltung
-  bool  _hasTarget = false;
-  float _targetCm  = NAN;
+  bool    _hasTarget = false;
+  float   _targetCm  = NAN;
   uint8_t _tUser = 0, _tPreset = 0;
 
-  // Modus
-  Mode  _mode = Mode::Idle;
-
-  // Relais-Statecache (logischer “an/aus”)
-  bool _upOn  = false;
-  bool _dnOn  = false;
-
-  // Manuell-Flags (vom UI)
-  bool _holdUp = false;
+  Mode _mode     = Mode::Idle;
+  bool _upOn     = false;
+  bool _dnOn     = false;
+  bool _holdUp   = false;
   bool _holdDown = false;
 
   EventCB _cb = nullptr;
 
-  // Persistenz (ESP32 NVS)
   Preferences _nvs;
   bool _nvsInit = false;
   static constexpr const char* NAMESPACE = "desk";
 
   void loadPresetsFromFlash();
-  void savePresetToFlash(uint8_t user, uint8_t preset, float cm);
+  void savePresetToFlash(uint8_t user, uint8_t preset, float cm, const String& name);
 };

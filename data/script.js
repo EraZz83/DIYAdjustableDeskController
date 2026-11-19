@@ -1,86 +1,118 @@
-async function fetchSensorDataLoop() {
+let holdTimer = null;
+let activeDir = null;
+
+async function api(path, body = {}) {
+  const res = await fetch(path, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+  if (!res.ok) {
+    throw new Error(`HTTP ${res.status}`);
+  }
+  await refresh();
+}
+
+function pulseMove(dir) {
+  fetch('/api/move', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ direction: dir })
+  }).catch(() => {});
+}
+
+function startHold(dir) {
+  if (activeDir === dir) return;
+  activeDir = dir;
+  pulseMove(dir);
+  clearInterval(holdTimer);
+  holdTimer = setInterval(() => pulseMove(dir), 350);
+}
+
+function stopHold() {
+  if (!activeDir) return;
+  activeDir = null;
+  clearInterval(holdTimer);
+  holdTimer = null;
+  api('/api/move', { direction: 'stop' }).catch(() => {});
+}
+
+function bindHold(id, dir) {
+  const el = document.getElementById(id);
+  el.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    startHold(dir);
+  });
+  ['pointerup', 'pointerleave', 'pointercancel'].forEach((ev) =>
+    el.addEventListener(ev, stopHold)
+  );
+}
+
+window.addEventListener('blur', stopHold);
+
+bindHold('btnUp', 'up');
+bindHold('btnDown', 'down');
+
+document.getElementById('btnStop').addEventListener('click', () => {
+  stopHold();
+  api('/api/stop').catch(() => {});
+});
+
+document.getElementById('btnZero').addEventListener('click', () => {
+  api('/api/zero').catch(() => {});
+});
+
+document.getElementById('btnSave').addEventListener('click', () => {
+  const user = Number(document.getElementById('u').value);
+  const preset = Number(document.getElementById('p').value);
+  const name = document.getElementById('name').value.trim();
+  api('/api/presets/save', { user, preset, name }).catch(() => {});
+});
+
+async function refresh() {
   try {
-    const response = await fetch('/sensor');
-    if (!response.ok) throw new Error('Netzwerkfehler');
+    const res = await fetch('/api/status');
+    const data = await res.json();
 
-    const data = await response.json();
+    document.getElementById('h').textContent = Number(data.heightCm).toFixed(1);
 
-    // Daten anzeigen
-    document.getElementById('sat').textContent = data.SAT_COUNT;
-    document.getElementById('lat').textContent = data.LAT.toFixed(6);
-    document.getElementById('lon').textContent = data.LON.toFixed(6);
-    document.getElementById('alt').textContent = data.ALT.toFixed(1);
-    document.getElementById('speed').textContent = data.SPEED.toFixed(3);
-    document.getElementById('temp').textContent = data.TEMP.toFixed(1);
-    document.getElementById('magx').textContent = data.MAGX.toFixed(3);
-    document.getElementById('magy').textContent = data.MAGY.toFixed(3);
-    document.getElementById('magz').textContent = data.MAGZ.toFixed(3);
-    document.getElementById('accx').textContent = data.ACCX.toFixed(3);
-    document.getElementById('accy').textContent = data.ACCY.toFixed(3);
-    document.getElementById('accz').textContent = data.ACCZ.toFixed(3);
-    document.getElementById('gyrox').textContent = data.GYROX.toFixed(3);
-    document.getElementById('gyroy').textContent = data.GYROY.toFixed(3);
-    document.getElementById('gyroz').textContent = data.GYROZ.toFixed(3);
-    document.getElementById('tick').textContent = data.TICK;
+    const targetText =
+      data.targetCm !== null && data.targetCm !== undefined
+        ? ` → Ziel: ${Number(data.targetCm).toFixed(1)} cm`
+        : '';
+    document.getElementById('mode').textContent = `Modus: ${data.mode}${targetText}`;
 
-    const declination = estimateDeclination(data.LAT, data.LON);
-    updateKompassFromMagnetometer(data.MAGX, data.MAGY, data.MAGZ, declination);
+    const box = document.getElementById('presets');
+    box.replaceChildren();
 
-  } catch (error) {
-    console.error('Fehler beim Laden der Sensor-Daten:');
-  } finally {
-    setTimeout(fetchSensorDataLoop, 1000);
+    (data.presets || []).forEach((item) => {
+      const row = document.createElement('div');
+      row.className = 'preset';
+
+      const info = document.createElement('div');
+      const title = document.createElement('strong');
+      title.textContent = item.name;
+
+      const meta = document.createElement('span');
+      meta.className = 'sub';
+      meta.textContent = ` (User ${item.user + 1} · Slot ${item.preset + 1} · ${Number(item.cm).toFixed(1)} cm)`;
+
+      info.append(title, meta);
+
+      const btn = document.createElement('button');
+      btn.className = 'primary';
+      btn.textContent = 'Anfahren';
+      btn.addEventListener('click', () => {
+        api('/api/presets/goto', { user: item.user, preset: item.preset }).catch(() => {});
+      });
+
+      row.append(info, btn);
+      box.appendChild(row);
+    });
+  } catch (err) {
+    document.getElementById('mode').textContent = 'Verbindung getrennt...';
   }
 }
 
-function updateKompassFromMagnetometer(magX, magY, magZ, declination) {
-  console.log("Kompass-Update aufgerufen");
-  console.log("RAW Magnetwerte:", { magX, magY, magZ });
-
-  if (typeof magX !== 'number' || typeof magY !== 'number' || typeof magZ !== 'number') {
-    console.warn("❌ Ungültige Magnetometerdaten");
-    return;
-  }
-
-  let heading = Math.atan2(magY, magX) * 180 / Math.PI;
-  if (isNaN(heading)) {
-    console.warn("❌ heading ist NaN");
-    return;
-  }
-
-  if (heading < 0) heading += 360;
-  heading += declination;
-  if (heading >= 360) heading -= 360;
-
-  const svgHeading = heading - 90;
-
-  const nadel = document.getElementById("nadel");
-  if (nadel) {
-    console.log(`→ Drehe SVG-Nadel: rotate(${svgHeading} 100 100)`);
-    nadel.setAttribute("transform", `rotate(${svgHeading} 100 100)`);
-  } else {
-    console.error("❌ nadel nicht gefunden");
-  }
-
-  const gradAnzeige = document.getElementById("kompassGrad");
-  if (gradAnzeige) {
-    gradAnzeige.textContent = `${Math.round(heading)}° Nord`;
-  }
-}
-
-function estimateDeclination(lat, lon) {
-  if (lat > 40 && lat < 55 && lon > 5 && lon < 15) {
-    return 2.5; // Deutschland
-  } else if (lat > 35 && lat < 45 && lon > -10 && lon < 0) {
-    return 0.5; // Spanien/Portugal
-  } else if (lat > 30 && lat < 50 && lon < -90) {
-    return -6.0; // USA Midwest
-  } else if (lat > 25 && lat < 50 && lon > -80 && lon < -70) {
-    return -13.0; // USA East
-  } else if (lat > -45 && lat < -10 && lon > 110 && lon < 155) {
-    return 11.0; // Australien
-  }
-  return 0.0; // Default
-}
-
-fetchSensorDataLoop();
+refresh();
+setInterval(refresh, 500);
