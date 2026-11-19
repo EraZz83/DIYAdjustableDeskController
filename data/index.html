@@ -1,48 +1,62 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="de">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Tischsteuerung</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Liftoff — Tischsteuerung</title>
   <link rel="stylesheet" href="/style.css" />
 </head>
 <body>
-  <main class="wrap">
-    <section class="card">
-      <div class="label">Aktuelle Höhe</div>
-      <div class="height"><span id="h">--</span> cm</div>
-      <div id="mode" class="sub">Modus: -</div>
+  <div id="wifiModal" class="modal-overlay" aria-hidden="true">
+    <div class="modal-content" role="dialog" aria-modal="true" aria-labelledby="wifiModalTitle">
+      <div class="modal-header">
+        <h2 id="wifiModalTitle">WLAN-Einstellungen</h2>
+        <button id="btnCloseWifi" class="close-modal" type="button" aria-label="Schließen">&times;</button>
+      </div>
+      <p id="wifiStatus" class="sub">Lade WLAN-Status...</p>
       <div class="row">
-        <button id="btnUp">▲ Hoch</button>
-        <button id="btnDown">▼ Runter</button>
-        <button class="danger" id="btnStop">Stopp</button>
-        <button id="btnZero">Nullpunkt (Zero)</button>
+        <input id="wifiSsid" type="text" placeholder="WLAN SSID" maxlength="63" />
+        <input id="wifiPass" type="password" placeholder="Neues Passwort (optional)" />
+        <button id="btnWifiSave" class="primary full-width" type="button">Speichern &amp; Neustart</button>
+      </div>
+      <p id="wifiFeedback" class="sub"></p>
+    </div>
+  </div>
+
+  <main class="container">
+    <section class="card">
+      <div class="card-header">
+        <h1>Liftoff Tischsteuerung</h1>
+        <button id="btnOpenWifi" class="icon-btn" type="button" title="WLAN-Einstellungen" aria-label="WLAN-Einstellungen öffnen">
+          <svg class="icon-img" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M19.14,12.94c0.04-0.3,0.06-0.61,0.06-0.94c0-0.32-0.02-0.64-0.06-0.94l2.03-1.58c0.18-0.14,0.23-0.41,0.12-0.61 l-1.92-3.32c-0.12-0.21-0.37-0.29-0.59-0.22l-2.39,0.96c-0.5-0.38-1.06-0.7-1.67-0.94l-0.36-2.54C14.46,2.17,14.22,2,13.99,2 H10.01C9.78,2,9.54,2.17,9.51,2.4L9.15,4.94C8.54,5.18,7.98,5.5,7.48,5.88L5.09,4.92C4.87,4.84,4.62,4.92,4.5,5.14L2.58,8.46 C2.47,8.66,2.52,8.94,2.7,9.08l2.03,1.58C4.69,10.96,4.68,11.28,4.68,11.62c0,0.34,0.01,0.66,0.06,0.94l-2.03,1.58 c-0.18,0.14-0.23,0.41-0.12,0.61l1.92,3.32c0.12,0.21,0.37,0.29,0.59,0.22l2.39-0.96c0.5,0.38,1.06,0.7,1.67,0.94l0.36,2.54 c0.03,0.24,0.27,0.41,0.51,0.41h3.99c0.23,0,0.47-0.17,0.51-0.41l0.36-2.54c0.61-0.24,1.17-0.56,1.67-0.94l2.39,0.96 c0.22,0.08,0.47,0,0.59-0.22l1.92-3.32c0.12-0.21,0.07-0.49-0.12-0.61L19.14,12.94z M12,15.6c-2.21,0-4-1.79-4-4s1.79-4,4-4 s4,1.79,4,4S14.21,15.6,12,15.6z" />
+          </svg>
+        </button>
+      </div>
+      <div class="height-readout"><span id="h">0.0</span> cm</div>
+      <p id="mode" class="sub">Modus: Idle</p>
+      <div class="row">
+        <button id="btnUp" class="primary" type="button">Hoch</button>
+        <button id="btnDown" class="primary" type="button">Runter</button>
+        <button id="btnStop" class="danger" type="button">Stopp</button>
+        <button id="btnZero" type="button">Nullpunkt</button>
       </div>
     </section>
 
     <section class="card">
-      <h2>Position speichern</h2>
+      <h2>Presets</h2>
+      <div id="presets"></div>
       <div class="row">
-        <select id="u">
-          <option value="0">Beco (User 0)</option>
-          <option value="1">Aybala (User 1)</option>
-        </select>
         <select id="p">
           <option value="0">Slot 1</option>
           <option value="1">Slot 2</option>
           <option value="2">Slot 3</option>
         </select>
-        <input id="name" type="text" placeholder="Name (z.B. Stehen)" />
-        <button class="primary" id="btnSave">Aktuelle Höhe speichern</button>
+        <input id="name" type="text" placeholder="Preset-Name" maxlength="24" />
+        <button id="btnSave" class="primary" type="button">Aktuelle Höhe speichern</button>
       </div>
     </section>
-
-    <section class="card">
-      <h2>Gespeicherte Positionen</h2>
-      <div id="presets"></div>
-    </section>
   </main>
-
   <script src="/script.js"></script>
 </body>
 </html>

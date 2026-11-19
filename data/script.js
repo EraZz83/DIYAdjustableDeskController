@@ -63,11 +63,86 @@ document.getElementById('btnZero').addEventListener('click', () => {
 });
 
 document.getElementById('btnSave').addEventListener('click', () => {
-  const user = Number(document.getElementById('u').value);
   const preset = Number(document.getElementById('p').value);
   const name = document.getElementById('name').value.trim();
-  api('/api/presets/save', { user, preset, name }).catch(() => {});
+  api('/api/presets/save', { preset, name }).catch(() => {});
 });
+
+const wifiModal = document.getElementById('wifiModal');
+const btnOpenWifi = document.getElementById('btnOpenWifi');
+const btnCloseWifi = document.getElementById('btnCloseWifi');
+
+function openWifiModal() {
+  wifiModal.classList.add('open');
+  wifiModal.setAttribute('aria-hidden', 'false');
+  loadWifiStatus();
+}
+
+function closeWifiModal() {
+  wifiModal.classList.remove('open');
+  wifiModal.setAttribute('aria-hidden', 'true');
+}
+
+btnOpenWifi.addEventListener('click', openWifiModal);
+btnCloseWifi.addEventListener('click', closeWifiModal);
+
+wifiModal.addEventListener('click', (e) => {
+  if (e.target === wifiModal) {
+    closeWifiModal();
+  }
+});
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && wifiModal.classList.contains('open')) {
+    closeWifiModal();
+  }
+});
+
+document.getElementById('btnWifiSave').addEventListener('click', async () => {
+  const ssid = document.getElementById('wifiSsid').value.trim();
+  const password = document.getElementById('wifiPass').value;
+  const feedback = document.getElementById('wifiFeedback');
+
+  if (!ssid) {
+    feedback.textContent = 'Bitte eine SSID eingeben.';
+    return;
+  }
+
+  feedback.textContent = 'Speichere Zugangsdaten und starte ESP32 neu...';
+  try {
+    const res = await fetch('/api/wifi/save', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ssid, password })
+    });
+    if (!res.ok) {
+      feedback.textContent = `Fehler (${res.status}) beim Speichern.`;
+      return;
+    }
+    document.getElementById('wifiPass').value = '';
+    setTimeout(loadWifiStatus, 4000);
+  } catch (_) {
+    feedback.textContent = 'ESP32 startet neu – gleich Verbindung prüfen.';
+  }
+});
+
+async function loadWifiStatus() {
+  try {
+    const res = await fetch('/api/wifi');
+    if (!res.ok) return;
+    const w = await res.json();
+
+    const modeLabel = w.apMode ? 'Setup-AP aktiv' : (w.connected ? 'Verbunden' : 'Getrennt');
+    const rssiLabel = !w.apMode && w.connected ? ` · ${w.rssi} dBm` : '';
+    document.getElementById('wifiStatus').textContent =
+      `${modeLabel} · SSID: ${w.ssid || '-'} · IP: ${w.ip}${rssiLabel}`;
+
+    const ssidInput = document.getElementById('wifiSsid');
+    if (document.activeElement !== ssidInput && w.ssid) {
+      ssidInput.value = w.ssid;
+    }
+  } catch (_) {}
+}
 
 async function refresh() {
   try {
@@ -95,15 +170,16 @@ async function refresh() {
 
       const meta = document.createElement('span');
       meta.className = 'sub';
-      meta.textContent = ` (User ${item.user + 1} · Slot ${item.preset + 1} · ${Number(item.cm).toFixed(1)} cm)`;
+      meta.textContent = ` (Slot ${item.preset + 1} · ${Number(item.cm).toFixed(1)} cm)`;
 
       info.append(title, meta);
 
       const btn = document.createElement('button');
       btn.className = 'primary';
+      btn.type = 'button';
       btn.textContent = 'Anfahren';
       btn.addEventListener('click', () => {
-        api('/api/presets/goto', { user: item.user, preset: item.preset }).catch(() => {});
+        api('/api/presets/goto', { preset: item.preset }).catch(() => {});
       });
 
       row.append(info, btn);

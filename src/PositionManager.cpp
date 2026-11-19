@@ -1,196 +1,148 @@
-// PositionManager.cpp
+// src/PositionManager.cpp
 #include "PositionManager.h"
+#include <cmath>
 
-PositionManager::PositionManager(int pinUp, int pinDown, bool activeHigh, float hysteresis_cm)
-: _pinUp(pinUp), _pinDown(pinDown), _activeHigh(activeHigh), _hyst(hysteresis_cm) {}
+PositionManager::PositionManager(int pinRelayUp,
+                                 int pinRelayDown,
+                                 bool activeHigh,
+                                 float hysteresisCm)
+  : _pinUp(pinRelayUp),
+    _pinDown(pinRelayDown),
+    _activeHigh(activeHigh),
+    _hysteresisCm(hysteresisCm),
+    _mode(Mode::Idle),
+    _targetCm(NAN),
+    _currentHeightCm(0.0f) {}
 
 void PositionManager::begin() {
   pinMode(_pinUp, OUTPUT);
   pinMode(_pinDown, OUTPUT);
-  driveNone();
-#if PM_DEBUG
-  debugPins("begin");
-#endif
+  _setRelays(false, false);
+  _loadPresetsFromNvs();
+}
 
-  if (_nvs.begin(NAMESPACE, /*readOnly*/ false)) {
-    _nvsInit = true;
-    loadPresetsFromFlash();
+void PositionManager::update(float currentHeightCm) {
+  _currentHeightCm = currentHeightCm;
+
+  if (std::isnan(_currentHeightCm)) {
+    stop();
+    return;
   }
-}
 
-void PositionManager::debugPins(const char* tag) {
-#if PM_DEBUG
-  int rlUp = digitalRead(_pinUp);
-  int rlDn = digitalRead(_pinDown);
-  Serial.printf("[PM:%s] upPin=%d(%d) dnPin=%d(%d) activeHigh=%d _upOn=%d _dnOn=%d\n",
-    tag, _pinUp, rlUp, _pinDown, rlDn, (int)_activeHigh, (int)_upOn, (int)_dnOn);
-#endif
-}
-
-void PositionManager::emit(Event::Type t, uint8_t user, uint8_t preset, float tgt) {
-  if (_cb) { Event e; e.type=t; e.user=user; e.preset=preset; e.target=tgt; _cb(e); }
-}
-
-void PositionManager::driveUp(bool on) {
-  if (on) { _dnOn = false; digitalWrite(_pinDown, _activeHigh ? LOW : HIGH); }
-  _upOn = on;
-  digitalWrite(_pinUp, _activeHigh ? (_upOn?HIGH:LOW) : (_upOn?LOW:HIGH));
-#if PM_DEBUG
-  debugPins(on ? "up_on" : "up_off");
-#endif
-}
-
-void PositionManager::driveDown(bool on) {
-  if (on) { _upOn = false; digitalWrite(_pinUp, _activeHigh ? LOW : HIGH); }
-  _dnOn = on;
-  digitalWrite(_pinDown, _activeHigh ? (_dnOn?HIGH:LOW) : (_dnOn?LOW:HIGH));
-#if PM_DEBUG
-  debugPins(on ? "dn_on" : "dn_off");
-#endif
-}
-
-void PositionManager::driveNone() {
-  _upOn = _dnOn = false;
-  digitalWrite(_pinUp,   _activeHigh ? LOW : HIGH);
-  digitalWrite(_pinDown, _activeHigh ? LOW : HIGH);
-#if PM_DEBUG
-  debugPins("none");
-#endif
-  _mode = Mode::Idle;
-}
-
-void PositionManager::loadPresetsFromFlash() {
-  if (!_nvsInit) return;
-  for (uint8_t u = 0; u < NUM_USERS; ++u) {
-    for (uint8_t p = 0; p < NUM_PRESETS; ++p) {
-      char keyVal[8], keyName[8];
-      snprintf(keyVal,  sizeof(keyVal),  "p%u%u", u, p);
-      snprintf(keyName, sizeof(keyName), "n%u%u", u, p);
-      _presets[u][p]     = _nvs.getFloat(keyVal, _presets[u][p]);
-      _presetNames[u][p] = _nvs.getString(keyName, _presetNames[u][p]);
+  if (_mode == Mode::PresetUp) {
+    if (_currentHeightCm >= (_targetCm - (_hysteresisCm / 2.0f))) {
+      stop();
+    } else {
+      _setRelays(true, false);
+    }
+  } else if (_mode == Mode::PresetDown) {
+    if (_currentHeightCm <= (_targetCm + (_hysteresisCm / 2.0f))) {
+      stop();
+    } else {
+      _setRelays(false, true);
     }
   }
 }
 
-void PositionManager::savePresetToFlash(uint8_t user, uint8_t preset, float cm, const String& name) {
-  if (!_nvsInit) return;
-  char keyVal[8], keyName[8];
-  snprintf(keyVal,  sizeof(keyVal),  "p%u%u", user, preset);
-  snprintf(keyName, sizeof(keyName), "n%u%u", user, preset);
-  _nvs.putFloat(keyVal, cm);
-  _nvs.putString(keyName, name);
-}
+void PositionManager::commandGoTo(uint8_t preset) {
+  if (preset >= NUM_PRESETS) return;
+  const float target = _presetHeights[preset];
 
-void PositionManager::setPreset(uint8_t user, uint8_t preset, float cm, const String& name) {
-  if (user < NUM_USERS && preset < NUM_PRESETS) {
-    _presets[user][preset] = cm;
-    if (name.length() > 0) {
-      String clean = name;
-      clean.trim();
-      if (clean.length() > 24) clean = clean.substring(0, 24);
-      if (clean.length() > 0) _presetNames[user][preset] = clean;
-    }
-    savePresetToFlash(user, preset, _presets[user][preset], _presetNames[user][preset]);
-    emit(Event::Type::PresetSaved, user, preset, cm);
+  if (std::isnan(target) || target <= 0.0f) return;
+
+  if (std::fabs(_currentHeightCm - target) <= (_hysteresisCm / 2.0f)) {
+    stop();
+    return;
   }
-}
 
-float PositionManager::getPreset(uint8_t user, uint8_t preset) const {
-  if (user < NUM_USERS && preset < NUM_PRESETS) return _presets[user][preset];
-  return NAN;
-}
-
-String PositionManager::getPresetName(uint8_t user, uint8_t preset) const {
-  if (user < NUM_USERS && preset < NUM_PRESETS) return _presetNames[user][preset];
-  return "";
-}
-
-void PositionManager::commandGoTo(uint8_t user, uint8_t preset) {
-  float tgt = getPreset(user, preset);
-  if (isnan(tgt)) return;
-  _tUser     = user;
-  _tPreset   = preset;
-  _targetCm  = tgt;
-  _hasTarget = true;
-}
-
-void PositionManager::manualHold(bool upHeld, bool downHeld) {
-  _holdUp   = upHeld;
-  _holdDown = downHeld;
-  if (_holdUp && _holdDown) {
-    driveNone();
-    _mode = Mode::Stopped;
-    emit(Event::Type::Stopped);
-  } else if (_holdUp) {
-    _hasTarget = false;
-    _targetCm  = NAN;
-    driveDown(false);
-    driveUp(true);
-    _mode = Mode::ManualUp;
-  } else if (_holdDown) {
-    _hasTarget = false;
-    _targetCm  = NAN;
-    driveUp(false);
-    driveDown(true);
-    _mode = Mode::ManualDown;
+  _targetCm = target;
+  if (_targetCm > _currentHeightCm) {
+    _mode = Mode::PresetUp;
   } else {
-    if (_mode == Mode::ManualUp || _mode == Mode::ManualDown) {
-      driveNone();
-    }
+    _mode = Mode::PresetDown;
+  }
+}
+
+void PositionManager::manualHold(bool up, bool down) {
+  if (up && down) {
+    stop();
+    return;
+  }
+
+  if (up) {
+    _mode = Mode::ManualUp;
+    _setRelays(true, false);
+  } else if (down) {
+    _mode = Mode::ManualDown;
+    _setRelays(false, true);
+  } else {
+    stop();
   }
 }
 
 void PositionManager::stop() {
-  driveNone();
-  _hasTarget = false;
-  _targetCm  = NAN;
-  _mode      = Mode::Stopped;
-  emit(Event::Type::Stopped);
+  _mode = Mode::Idle;
+  _targetCm = NAN;
+  _setRelays(false, false);
 }
 
-void PositionManager::update(float current_cm) {
-  if (_mode == Mode::ManualUp || _mode == Mode::ManualDown) return;
+float PositionManager::getPreset(uint8_t preset) const {
+  if (preset >= NUM_PRESETS) return 0.0f;
+  return _presetHeights[preset];
+}
 
-  if (!_hasTarget) {
-    if (_mode != Mode::Idle) driveNone();
-    return;
+String PositionManager::getPresetName(uint8_t preset) const {
+  if (preset >= NUM_PRESETS) return "Error";
+  if (_presetNames[preset].length() == 0) {
+    return "Slot " + String(preset + 1);
   }
+  return _presetNames[preset];
+}
 
-  float diff = _targetCm - current_cm;
+void PositionManager::setPreset(uint8_t preset, float cm, const String& name) {
+  if (preset >= NUM_PRESETS) return;
 
-  if (fabsf(diff) <= _hyst) {
-    driveNone();
-    _hasTarget = false;
-    emit(Event::Type::MoveFinished, _tUser, _tPreset, _targetCm);
-    _targetCm = NAN;
-    return;
+  _presetHeights[preset] = cm;
+  if (name.length() > 0) {
+    _presetNames[preset] = name;
   }
+  _savePresetToNvs(preset);
+}
 
-  if (diff > 0) {
-    if (_mode != Mode::PresetUp) {
-      driveDown(false);
-      driveUp(true);
-      _mode = Mode::PresetUp;
-      emit(Event::Type::MoveStarted, _tUser, _tPreset, _targetCm);
+void PositionManager::_loadPresetsFromNvs() {
+  if (!_nvs.begin("presets", false)) return;
+
+  for (uint8_t i = 0; i < NUM_PRESETS; ++i) {
+    const String keyCm = "h_" + String(i);
+    const String keyName = "n_" + String(i);
+
+    if (!_nvs.isKey(keyCm.c_str())) {
+      _presetHeights[i] = (i == 0) ? 112.0f : (i == 1) ? 74.0f : 65.0f;
+      _presetNames[i] = "";
+      _savePresetToNvs(i);
+    } else {
+      _presetHeights[i] = _nvs.getFloat(keyCm.c_str());
+      _presetNames[i] = _nvs.getString(keyName.c_str(), "");
     }
-    if (current_cm >= _targetCm) {
-      driveNone();
-      _hasTarget = false;
-      emit(Event::Type::MoveFinished, _tUser, _tPreset, _targetCm);
-      _targetCm = NAN;
-    }
+  }
+  _nvs.end();
+}
+
+void PositionManager::_savePresetToNvs(uint8_t preset) {
+  if (preset >= NUM_PRESETS) return;
+  if (!_nvs.begin("presets", false)) return;
+
+  _nvs.putFloat(("h_" + String(preset)).c_str(), _presetHeights[preset]);
+  _nvs.putString(("n_" + String(preset)).c_str(), _presetNames[preset]);
+  _nvs.end();
+}
+
+void PositionManager::_setRelays(bool up, bool down) {
+  if (_activeHigh) {
+    digitalWrite(_pinUp, up ? HIGH : LOW);
+    digitalWrite(_pinDown, down ? HIGH : LOW);
   } else {
-    if (_mode != Mode::PresetDown) {
-      driveUp(false);
-      driveDown(true);
-      _mode = Mode::PresetDown;
-      emit(Event::Type::MoveStarted, _tUser, _tPreset, _targetCm);
-    }
-    if (current_cm <= _targetCm) {
-      driveNone();
-      _hasTarget = false;
-      emit(Event::Type::MoveFinished, _tUser, _tPreset, _targetCm);
-      _targetCm = NAN;
-    }
+    digitalWrite(_pinUp, up ? LOW : HIGH);
+    digitalWrite(_pinDown, down ? LOW : HIGH);
   }
 }

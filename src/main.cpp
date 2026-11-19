@@ -1,90 +1,70 @@
+// main.cpp
 #include <Arduino.h>
-#include <WiFi.h>
-
-#include "WiFiManager.h"
-#include "OTAHandler.h"
+#include <ArduinoOTA.h>
 #include <ESPmDNS.h>
-#include "VL53L1X_Sensor.h"
+#include <Wire.h>
 #include "PositionManager.h"
+#include "VL53L1X_Sensor.h"
 #include "WebApiServer.h"
+#include "WifiManager.h"
 
-// WLAN
-const char *ssid = "TurkishAirlines_";
-const char *password = "123Polizei";
+namespace {
+constexpr int PIN_SDA = 21;
+constexpr int PIN_SCL = 22;
+constexpr int PIN_RELAY_UP = 26;
+constexpr int PIN_RELAY_DOWN = 27;
+constexpr bool RELAY_ACTIVE_HIGH = true;
+constexpr float HYSTERESIS_CM = 0.4f;
 
-// Motor-GPIOs (Relais/MOSFET)
-constexpr int PIN_UP = 25;
-constexpr int PIN_DOWN = 26;
-constexpr bool RELAYS_ACTIVE_HIGH = false;
+constexpr const char* DEFAULT_WIFI_SSID = "";
+constexpr const char* DEFAULT_WIFI_PASS = "";
+constexpr const char* AP_SSID = "Liftoff-Setup";
+constexpr const char* AP_PASS = "liftoff123";
+constexpr const char* HOSTNAME = "liftoff";
+} // namespace
 
-VL53L1X_Sensor distanceSensor;
-PositionManager posMgr(PIN_UP, PIN_DOWN, RELAYS_ACTIVE_HIGH, /*hysteresis_cm*/ 0.3f);
-WebApiServer apiServer(posMgr, distanceSensor, 80);
+WifiManager wifiMgr(DEFAULT_WIFI_SSID, DEFAULT_WIFI_PASS, AP_SSID, AP_PASS);
+VL53L1X_Sensor sensor;
+PositionManager posMgr(PIN_RELAY_UP, PIN_RELAY_DOWN, RELAY_ACTIVE_HIGH, HYSTERESIS_CM);
+WebApiServer apiServer(posMgr, sensor, wifiMgr, 80);
 
 void setup() {
   Serial.begin(115200);
-  Serial.println("\n🚀 Starte Tischsteuerung (Web-API)...");
+  delay(200);
 
-  bool ok = connectToWiFi(ssid, password, 20);
-  if (!ok) {
-    Serial.println("⚠️ Fallback: Starte AP...");
-    startAccessPoint("Tischsteuerung_AP", "12345678",
-                     IPAddress(192, 168, 4, 1), IPAddress(192, 168, 4, 1), IPAddress(255, 255, 255, 0));
-  }
+  Wire.begin(PIN_SDA, PIN_SCL);
+  sensor.begin();
+  posMgr.begin();
 
-  setupOTA("liftoff");
+  wifiMgr.begin(12000);
 
-  if (MDNS.begin("liftoff")) {
-    Serial.println("🚀 mDNS aktiv: http://liftoff.local");
+  if (MDNS.begin(HOSTNAME)) {
+    Serial.printf("🚀 mDNS aktiv: http://%s.local\n", HOSTNAME);
   } else {
     Serial.println("⚠️ mDNS Start fehlgeschlagen");
   }
 
-  if (!distanceSensor.begin(false)) {
-    Serial.println("❌ VL53L1X init fehlgeschlagen!");
-    while (1) delay(100);
-  }
-
-  posMgr.begin();
-
-  posMgr.setCallback([](const PositionManager::Event &e) {
-    switch (e.type) {
-      case PositionManager::Event::Type::PresetSaved:
-        Serial.printf("💾 Preset gespeichert: user=%u preset=%u -> %.1f cm\n", e.user, e.preset, e.target);
-        break;
-      case PositionManager::Event::Type::MoveStarted:
-        Serial.printf("▶️  Fahrt gestartet zu %.1f cm\n", e.target);
-        break;
-      case PositionManager::Event::Type::MoveFinished:
-        Serial.printf("✅ Ziel erreicht (%.1f cm)\n", e.target);
-        break;
-      case PositionManager::Event::Type::Stopped:
-        Serial.println("⛔️ Stop");
-        break;
-    }
-  });
+  ArduinoOTA.setHostname(HOSTNAME);
+  ArduinoOTA.begin();
 
   apiServer.begin();
 }
 
 void loop() {
-  handleOTA();
+  ArduinoOTA.handle();
+  wifiMgr.handle();
   apiServer.handle();
 
-  static bool filtInit = false;
-  static float cmFilt = 0.0f;
-  const float cmRaw = distanceSensor.readDistanceMM() / 10.0f;
+  const float heightCm = sensor.readDistanceMM();
+  apiServer.setCurrentHeight(heightCm);
 
-  if (!filtInit) {
-    cmFilt = cmRaw;
-    filtInit = true;
-  } else {
-    cmFilt = 0.25f * cmRaw + 0.75f * cmFilt;
+  if (apiServer.manualUpRequested() || apiServer.manualDownRequested()) {
+    posMgr.manualHold(apiServer.manualUpRequested(), apiServer.manualDownRequested());
+  } else if (posMgr.mode() == PositionManager::Mode::ManualUp ||
+             posMgr.mode() == PositionManager::Mode::ManualDown) {
+    posMgr.manualHold(false, false);
   }
 
-  apiServer.setCurrentHeight(cmFilt);
-  posMgr.manualHold(apiServer.manualUpRequested(), apiServer.manualDownRequested());
-  posMgr.update(cmFilt);
-
-  delay(60);
+  posMgr.update(heightCm);
+  delay(20);
 }

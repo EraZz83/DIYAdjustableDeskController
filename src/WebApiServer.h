@@ -3,10 +3,14 @@
 #include <WebServer.h>
 #include "PositionManager.h"
 #include "VL53L1X_Sensor.h"
+#include "WifiManager.h"
 
 class WebApiServer {
 public:
-  WebApiServer(PositionManager& posMgr, VL53L1X_Sensor& sensor, uint16_t port = 80);
+  WebApiServer(PositionManager& posMgr,
+               VL53L1X_Sensor& sensor,
+               WifiManager& wifiMgr,
+               uint16_t port = 80);
 
   void begin();
   void handle();
@@ -19,6 +23,7 @@ private:
   WebServer _server;
   PositionManager& _posMgr;
   VL53L1X_Sensor& _sensor;
+  WifiManager& _wifiMgr;
 
   float _currentCm = 0.0f;
   bool _manualUp = false;
@@ -33,5 +38,7 @@ private:
   void handleMove();
   void handleStop();
   void handleZero();
+  void handleWifiGet();
+  void handleWifiSave();
   void sendJson(int code, const String& payload);
 };

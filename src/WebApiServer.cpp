@@ -59,8 +59,11 @@ int extractJsonInt(const String& body, const char* key, int fallback = -1) {
 }
 } // namespace
 
-WebApiServer::WebApiServer(PositionManager& posMgr, VL53L1X_Sensor& sensor, uint16_t port)
-: _server(port), _posMgr(posMgr), _sensor(sensor) {}
+WebApiServer::WebApiServer(PositionManager& posMgr,
+                         VL53L1X_Sensor& sensor,
+                         WifiManager& wifiMgr,
+                         uint16_t port)
+: _server(port), _posMgr(posMgr), _sensor(sensor), _wifiMgr(wifiMgr) {}
 
 void WebApiServer::begin() {
   if (!LittleFS.begin(true)) {
@@ -97,6 +100,8 @@ void WebApiServer::registerRoutes() {
   _server.on("/api/move", HTTP_POST, [this]() { handleMove(); });
   _server.on("/api/stop", HTTP_POST, [this]() { handleStop(); });
   _server.on("/api/zero", HTTP_POST, [this]() { handleZero(); });
+  _server.on("/api/wifi", HTTP_GET, [this]() { handleWifiGet(); });
+  _server.on("/api/wifi/save", HTTP_POST, [this]() { handleWifiSave(); });
 }
 
 void WebApiServer::sendJson(int code, const String& payload) {
@@ -115,15 +120,12 @@ void WebApiServer::handleStatus() {
   json += "\"presets\":[";
 
   bool first = true;
-  for (uint8_t u = 0; u < PositionManager::NUM_USERS; ++u) {
-    for (uint8_t p = 0; p < PositionManager::NUM_PRESETS; ++p) {
-      if (!first) json += ",";
-      first = false;
-      json += "{\"user\":" + String(u) +
-              ",\"preset\":" + String(p) +
-              ",\"name\":\"" + escapeJson(_posMgr.getPresetName(u, p)) + "\"" +
-              ",\"cm\":" + String(_posMgr.getPreset(u, p), 1) + "}";
-    }
+  for (uint8_t p = 0; p < PositionManager::NUM_PRESETS; ++p) {
+    if (!first) json += ",";
+    first = false;
+    json += "{\"preset\":" + String(p) +
+            ",\"name\":\"" + escapeJson(_posMgr.getPresetName(p)) + "\"" +
+            ",\"cm\":" + String(_posMgr.getPreset(p), 1) + "}";
   }
   json += "]}";
   sendJson(200, json);
@@ -131,28 +133,26 @@ void WebApiServer::handleStatus() {
 
 void WebApiServer::handleGoto() {
   const String& body = _server.arg("plain");
-  int u = extractJsonInt(body, "user", -1);
   int p = extractJsonInt(body, "preset", -1);
-  if (u < 0 || u >= (int)PositionManager::NUM_USERS || p < 0 || p >= (int)PositionManager::NUM_PRESETS) {
-    sendJson(400, "{\"error\":\"invalid user or preset\"}");
+  if (p < 0 || p >= (int)PositionManager::NUM_PRESETS) {
+    sendJson(400, "{\"error\":\"invalid preset\"}");
     return;
   }
   _manualUp = false;
   _manualDown = false;
-  _posMgr.commandGoTo((uint8_t)u, (uint8_t)p);
+  _posMgr.commandGoTo((uint8_t)p);
   sendJson(200, "{\"ok\":true}");
 }
 
 void WebApiServer::handleSave() {
   const String& body = _server.arg("plain");
-  int u = extractJsonInt(body, "user", -1);
   int p = extractJsonInt(body, "preset", -1);
   String name = extractJsonString(body, "name");
-  if (u < 0 || u >= (int)PositionManager::NUM_USERS || p < 0 || p >= (int)PositionManager::NUM_PRESETS) {
-    sendJson(400, "{\"error\":\"invalid user or preset\"}");
+  if (p < 0 || p >= (int)PositionManager::NUM_PRESETS) {
+    sendJson(400, "{\"error\":\"invalid preset\"}");
     return;
   }
-  _posMgr.setPreset((uint8_t)u, (uint8_t)p, _currentCm, name);
+  _posMgr.setPreset((uint8_t)p, _currentCm, name);
   sendJson(200, "{\"ok\":true}");
 }
 
@@ -185,4 +185,33 @@ void WebApiServer::handleStop() {
 void WebApiServer::handleZero() {
   _sensor.setOffset(_currentCm);
   sendJson(200, "{\"ok\":true}");
+}
+
+void WebApiServer::handleWifiGet() {
+  String json = "{";
+  json += "\"ssid\":\"" + escapeJson(_wifiMgr.ssid()) + "\",";
+  json += "\"hasPassword\":" + String(_wifiMgr.hasPassword() ? "true" : "false") + ",";
+  json += "\"connected\":" + String(_wifiMgr.isConnected() ? "true" : "false") + ",";
+  json += "\"apMode\":" + String(_wifiMgr.isApMode() ? "true" : "false") + ",";
+  json += "\"ip\":\"" + escapeJson(_wifiMgr.ipString()) + "\",";
+  json += "\"rssi\":" + String(_wifiMgr.rssi());
+  json += "}";
+  sendJson(200, json);
+}
+
+void WebApiServer::handleWifiSave() {
+  const String& body = _server.arg("plain");
+  String ssid = extractJsonString(body, "ssid");
+  String password = extractJsonString(body, "password");
+
+  ssid.trim();
+  if (ssid.length() == 0) {
+    sendJson(400, "{\"error\":\"ssid required\"}");
+    return;
+  }
+
+  _wifiMgr.saveCredentials(ssid, password);
+  sendJson(200, "{\"ok\":true,\"restarting\":true}");
+  delay(200);
+  ESP.restart();
 }

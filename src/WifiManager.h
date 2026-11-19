@@ -1,8 +1,43 @@
+// WifiManager.h
 #pragma once
-#define DEBUG_
+#include <Arduino.h>
+#include <Preferences.h>
+#include <WiFi.h>
 
-#include <IPAddress.h>
+class WifiManager {
+public:
+  WifiManager(const char* defaultSsid,
+              const char* defaultPass,
+              const char* apSsid = "Liftoff-Setup",
+              const char* apPass = "liftoff123");
 
-bool connectToWiFi(const char *ssid, const char *password, int maxTries);
-void startAccessPoint(const char *ap_ssid, const char *ap_password,
-                      IPAddress ip, IPAddress gateway, IPAddress subnet);
+  void begin(uint32_t connectTimeoutMs = 12000);
+  void handle();
+
+  void saveCredentials(const String& ssid, const String& password);
+  void clearCredentials();
+
+  String ssid() const { return _ssid; }
+  bool   hasPassword() const { return _password.length() > 0; }
+  bool   isApMode() const { return _apMode; }
+  bool   isConnected() const { return WiFi.status() == WL_CONNECTED; }
+  String ipString() const;
+  int    rssi() const;
+
+private:
+  void loadFromNvs();
+  void startApFallback();
+
+  const char* _defaultSsid;
+  const char* _defaultPass;
+  const char* _apSsid;
+  const char* _apPass;
+
+  String _ssid;
+  String _password;
+  bool   _apMode = false;
+
+  Preferences _nvs;
+  bool _nvsInit = false;
+  static constexpr const char* NAMESPACE = "wifi";
+};
