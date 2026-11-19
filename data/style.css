@@ -3,11 +3,17 @@ body {
   background: #12151c;
   color: #eef2f7;
   margin: 0;
-  padding: 24px;
+  padding: 24px 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-height: 100vh;
+  box-sizing: border-box;
 }
 
 .container {
-  max-width: 720px;
+  width: 100%;
+  max-width: 600px;
   margin: 0 auto;
   display: grid;
   gap: 16px;
@@ -18,13 +24,22 @@ body {
   border: 1px solid #2b3344;
   border-radius: 12px;
   padding: 20px;
+  text-align: center;
 }
 
 .card-header {
+  position: relative;
   display: flex;
-  justify-content: space-between;
+  justify-content: center;
   align-items: center;
   margin-bottom: 12px;
+}
+
+.card-header .icon-btn {
+  position: absolute;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
 }
 
 .card-header h1,
@@ -33,6 +48,7 @@ h1,
 h2 {
   margin-top: 0;
   margin-bottom: 0;
+  text-align: center;
 }
 
 .height-readout {
@@ -40,12 +56,14 @@ h2 {
   font-weight: 700;
   color: #5ea8ff;
   margin: 8px 0;
+  text-align: center;
 }
 
 .sub {
   color: #9aa6bc;
   font-size: 0.92rem;
   margin: 6px 0 0;
+  text-align: center;
 }
 
 .row {
@@ -53,6 +71,8 @@ h2 {
   flex-wrap: wrap;
   gap: 10px;
   margin-top: 12px;
+  justify-content: center;
+  align-items: center;
 }
 
 button,
@@ -64,6 +84,7 @@ select {
   font-size: 0.95rem;
   background: #242b3a;
   color: #eef2f7;
+  transition: opacity 0.2s, background-color 0.2s, border-color 0.2s;
 }
 
 button {
@@ -76,25 +97,140 @@ button.primary {
   border-color: #2d6cdf;
 }
 
+button.primary:hover:not(:disabled) {
+  background: #3b7ced;
+}
+
 button.danger {
   background: #b8333a;
   border-color: #b8333a;
+}
+
+button.danger:hover:not(:disabled) {
+  background: #d43b44;
+}
+
+button:disabled,
+input:disabled {
+  opacity: 0.38;
+  cursor: not-allowed !important;
+  pointer-events: none;
 }
 
 button.full-width {
   width: 100%;
 }
 
+/* Pulsierender Stopp-Button während der Fahrt */
+body.is-moving #btnStop {
+  animation: pulse-stop 1.2s infinite alternate;
+  box-shadow: 0 0 14px rgba(220, 53, 69, 0.7);
+}
+
+@keyframes pulse-stop {
+  from {
+    transform: scale(1);
+    box-shadow: 0 0 8px rgba(220, 53, 69, 0.6);
+  }
+  to {
+    transform: scale(1.05);
+    box-shadow: 0 0 18px rgba(220, 53, 69, 0.9);
+  }
+}
+
+/* Dynamische Presets-Liste */
+#presets {
+  margin-top: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
 .preset {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 10px 0;
-  border-bottom: 1px solid #2b3344;
+  padding: 10px 14px;
+  background: #222938;
+  border: 1px solid #2e374a;
+  border-radius: 10px;
+  max-width: 480px;
+  width: 100%;
+  box-sizing: border-box;
+  margin: 0 auto;
+  transition: border-color 0.2s, background-color 0.2s, box-shadow 0.2s;
 }
 
-.preset:last-child {
-  border-bottom: none;
+.preset.active-target {
+  border-color: #5ea8ff;
+  background: #1c2b42;
+  box-shadow: 0 0 10px rgba(94, 168, 255, 0.35);
+}
+
+.preset-info {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  text-align: left;
+  gap: 2px;
+}
+
+.preset-name {
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: #eef2f7;
+}
+
+.preset-cm {
+  font-size: 0.88rem;
+  color: #8fa0bd;
+}
+
+.preset-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.btn-goto {
+  padding: 8px 16px;
+  font-size: 0.9rem;
+}
+
+.btn-del {
+  background: #362227;
+  color: #ff7582;
+  border: 1px solid #572931;
+  padding: 8px 12px;
+  font-size: 1.15rem;
+  line-height: 1;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.btn-del:hover:not(:disabled) {
+  background: #b8333a;
+  color: #fff;
+  border-color: #b8333a;
+}
+
+.preset-empty {
+  color: #8fa0bd;
+  font-size: 0.92rem;
+  padding: 12px;
+}
+
+.preset-add-row {
+  margin-top: 16px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 10px;
+}
+
+.preset-add-row input {
+  max-width: 200px;
+  text-align: center;
 }
 
 .icon-btn {
@@ -151,6 +287,7 @@ button.full-width {
   transform: scale(0.95);
   transition: transform 0.25s;
   box-shadow: 0 12px 30px rgba(0, 0, 0, 0.5);
+  text-align: center;
 }
 
 .modal-overlay.open .modal-content {
@@ -158,13 +295,31 @@ button.full-width {
 }
 
 .modal-header {
+  position: relative;
   display: flex;
-  justify-content: space-between;
+  justify-content: center;
   align-items: center;
   margin-bottom: 14px;
 }
 
+.modal-content .row {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: stretch;
+}
+
+.modal-content input {
+  text-align: center;
+  box-sizing: border-box;
+  width: 100%;
+}
+
 .close-modal {
+  position: absolute;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
   background: transparent;
   border: none;
   color: #9aa6bc;

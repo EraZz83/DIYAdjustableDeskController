@@ -7,20 +7,22 @@
 class VL53L1X_Sensor {
 public:
     bool begin(bool debugInConsole = true);
-    int  readDistanceMM();                // korrigierte Distanz in mm
-    void setOffset(float offsetValueCm);  // Offset in cm übergeben (z.B. cmFilt)
+    int   readDistanceMM();                // korrigierte Distanz in mm
+    float readDistanceCM();               // korrigierte Distanz in cm
+    void  setZeroCurrent(float currentCm);// Setzt aktuellen Messwert dauerhaft auf 0.0 cm
+    void  setOffset(float offsetValueCm); // Offset in cm setzen
     float getOffset() const;              // Offset in cm zurückgeben
+    void  resetOffset();                  // Offset auf 0 zurücksetzen
 
 private:
     SFEVL53L1X sensor;
     bool dbg = false;
 
-    // Offset wird intern in Millimetern gehalten (für korrekte Subtraktion)
+    // Offset intern in Millimetern
     int offsetMM = 0;
 
-    // Persistenz (ESP32 NVS)
-    Preferences _nvs;
-    bool _nvsInit = false;
     static constexpr const char* NAMESPACE = "desk";
     static constexpr const char* KEY_OFF   = "offset_mm";
+
+    void saveOffsetToNvs();
 };

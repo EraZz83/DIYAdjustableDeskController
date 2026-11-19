@@ -44,11 +44,17 @@ void PositionManager::update(float currentHeightCm) {
   }
 }
 
-void PositionManager::commandGoTo(uint8_t preset) {
-  if (preset >= NUM_PRESETS) return;
-  const float target = _presetHeights[preset];
+void PositionManager::commandGoTo(uint32_t presetId) {
+  for (const auto& p : _presets) {
+    if (p.id == presetId) {
+      commandGoToHeight(p.heightCm);
+      return;
+    }
+  }
+}
 
-  if (std::isnan(target) || target <= 0.0f) return;
+void PositionManager::commandGoToHeight(float target) {
+  if (std::isnan(target) || target < 0.0f) return;
 
   if (std::fabs(_currentHeightCm - target) <= (_hysteresisCm / 2.0f)) {
     stop();
@@ -86,54 +92,100 @@ void PositionManager::stop() {
   _setRelays(false, false);
 }
 
-float PositionManager::getPreset(uint8_t preset) const {
-  if (preset >= NUM_PRESETS) return 0.0f;
-  return _presetHeights[preset];
+const PositionManager::Preset* PositionManager::findPreset(uint32_t id) const {
+  for (const auto& p : _presets) {
+    if (p.id == id) return &p;
+  }
+  return nullptr;
 }
 
-String PositionManager::getPresetName(uint8_t preset) const {
-  if (preset >= NUM_PRESETS) return "Error";
-  if (_presetNames[preset].length() == 0) {
-    return "Slot " + String(preset + 1);
+bool PositionManager::addPreset(const String& name, float heightCm) {
+  uint32_t newId = 1;
+  for (const auto& p : _presets) {
+    if (p.id >= newId) {
+      newId = p.id + 1;
+    }
   }
-  return _presetNames[preset];
+
+  String pName = name;
+  pName.trim();
+  if (pName.length() == 0) {
+    pName = "Preset " + String(newId);
+  }
+
+  _presets.push_back({newId, pName, heightCm});
+  _savePresetsToNvs();
+  return true;
 }
 
-void PositionManager::setPreset(uint8_t preset, float cm, const String& name) {
-  if (preset >= NUM_PRESETS) return;
-
-  _presetHeights[preset] = cm;
-  if (name.length() > 0) {
-    _presetNames[preset] = name;
+bool PositionManager::deletePreset(uint32_t id) {
+  for (auto it = _presets.begin(); it != _presets.end(); ++it) {
+    if (it->id == id) {
+      _presets.erase(it);
+      _savePresetsToNvs();
+      return true;
+    }
   }
-  _savePresetToNvs(preset);
+  return false;
+}
+
+bool PositionManager::updatePreset(uint32_t id, const String& name, float heightCm) {
+  for (auto& p : _presets) {
+    if (p.id == id) {
+      if (name.length() > 0) p.name = name;
+      p.heightCm = heightCm;
+      _savePresetsToNvs();
+      return true;
+    }
+  }
+  return false;
 }
 
 void PositionManager::_loadPresetsFromNvs() {
+  _presets.clear();
   if (!_nvs.begin("presets", false)) return;
 
-  for (uint8_t i = 0; i < NUM_PRESETS; ++i) {
-    const String keyCm = "h_" + String(i);
-    const String keyName = "n_" + String(i);
-
-    if (!_nvs.isKey(keyCm.c_str())) {
-      _presetHeights[i] = (i == 0) ? 112.0f : (i == 1) ? 74.0f : 65.0f;
-      _presetNames[i] = "";
-      _savePresetToNvs(i);
-    } else {
-      _presetHeights[i] = _nvs.getFloat(keyCm.c_str());
-      _presetNames[i] = _nvs.getString(keyName.c_str(), "");
+  if (_nvs.isKey("count")) {
+    uint32_t count = _nvs.getUInt("count", 0);
+    for (uint32_t i = 0; i < count; ++i) {
+      uint32_t id = _nvs.getUInt(("id_" + String(i)).c_str(), i + 1);
+      String name = _nvs.getString(("n_" + String(i)).c_str(), "Preset " + String(i + 1));
+      float h = _nvs.getFloat(("h_" + String(i)).c_str(), 0.0f);
+      _presets.push_back({id, name, h});
     }
+    _nvs.end();
+  } else {
+    // Migration: Falls noch alte h_0, h_1, h_2 Schlüssel vorliegen
+    float h0 = _nvs.getFloat("h_0", 112.0f);
+    String n0 = _nvs.getString("n_0", "Stehen");
+    if (n0.length() == 0) n0 = "Stehen";
+
+    float h1 = _nvs.getFloat("h_1", 74.0f);
+    String n1 = _nvs.getString("n_1", "Sitzen");
+    if (n1.length() == 0) n1 = "Sitzen";
+
+    float h2 = _nvs.getFloat("h_2", 65.0f);
+    String n2 = _nvs.getString("n_2", "Niedrig");
+    if (n2.length() == 0) n2 = "Niedrig";
+
+    _presets.push_back({1, n0, h0});
+    _presets.push_back({2, n1, h1});
+    _presets.push_back({3, n2, h2});
+
+    _nvs.end();
+    _savePresetsToNvs();
   }
-  _nvs.end();
 }
 
-void PositionManager::_savePresetToNvs(uint8_t preset) {
-  if (preset >= NUM_PRESETS) return;
+void PositionManager::_savePresetsToNvs() {
   if (!_nvs.begin("presets", false)) return;
-
-  _nvs.putFloat(("h_" + String(preset)).c_str(), _presetHeights[preset]);
-  _nvs.putString(("n_" + String(preset)).c_str(), _presetNames[preset]);
+  _nvs.clear();
+  _nvs.putUInt("count", static_cast<uint32_t>(_presets.size()));
+  for (size_t i = 0; i < _presets.size(); ++i) {
+    _nvs.putUInt(("id_" + String(i)).c_str(), _presets[i].id);
+    _nvs.putString(("n_" + String(i)).c_str(), _presets[i].name);
+    _nvs.putFloat(("h_" + String(i)).c_str(), _presets[i].heightCm);
+  }
   _nvs.end();
 }
 

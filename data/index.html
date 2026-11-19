@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Liftoff — Tischsteuerung</title>
-  <link rel="stylesheet" href="/style.css" />
+  <link rel="stylesheet" href="style.css" />
 </head>
 <body>
   <div id="wifiModal" class="modal-overlay" aria-hidden="true">
@@ -39,24 +39,19 @@
         <button id="btnUp" class="primary" type="button">Hoch</button>
         <button id="btnDown" class="primary" type="button">Runter</button>
         <button id="btnStop" class="danger" type="button">Stopp</button>
-        <button id="btnZero" type="button">Nullpunkt</button>
+        <button id="btnZero" type="button" title="Aktuelle Höhe dauerhaft als 0.0 cm festlegen">Nullpunkt</button>
       </div>
     </section>
 
     <section class="card">
       <h2>Presets</h2>
       <div id="presets"></div>
-      <div class="row">
-        <select id="p">
-          <option value="0">Slot 1</option>
-          <option value="1">Slot 2</option>
-          <option value="2">Slot 3</option>
-        </select>
-        <input id="name" type="text" placeholder="Preset-Name" maxlength="24" />
-        <button id="btnSave" class="primary" type="button">Aktuelle Höhe speichern</button>
+      <div class="row preset-add-row">
+        <input id="presetName" type="text" placeholder="Preset-Name (z.B. Stehen)" maxlength="24" />
+        <button id="btnAddPreset" class="primary" type="button">+ Aktuelle Höhe speichern</button>
       </div>
     </section>
   </main>
-  <script src="/script.js"></script>
+  <script src="script.js"></script>
 </body>
 </html>

@@ -15,7 +15,7 @@ public:
   void begin();
   void handle();
 
-  void setCurrentHeight(float cm) { _currentCm = cm; }
+  void setCurrentHeight(float heightCm) { _currentCm = heightCm; }
   bool manualUpRequested() const;
   bool manualDownRequested() const;
 
@@ -29,16 +29,18 @@ private:
   bool _manualUp = false;
   bool _manualDown = false;
   uint32_t _lastManualMs = 0;
-  static constexpr uint32_t MANUAL_TIMEOUT_MS = 900;
+  static constexpr uint32_t MANUAL_TIMEOUT_MS = 600;
 
   void registerRoutes();
   void handleStatus();
   void handleGoto();
   void handleSave();
+  void handleDelete();
   void handleMove();
   void handleStop();
   void handleZero();
   void handleWifiGet();
   void handleWifiSave();
+
   void sendJson(int code, const String& payload);
 };

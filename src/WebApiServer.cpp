@@ -1,7 +1,7 @@
 // WebApiServer.cpp
 #include "WebApiServer.h"
 #include <LittleFS.h>
-#include <math.h>
+#include <cmath>
 
 namespace {
 String modeToStr(PositionManager::Mode m) {
@@ -24,7 +24,7 @@ String escapeJson(const String& raw) {
     if (c == '"' || c == '\\') {
       out += '\\';
       out += c;
-    } else if ((uint8_t)c >= 0x20) {
+    } else if (static_cast<uint8_t>(c) >= 0x20) {
       out += c;
     }
   }
@@ -51,11 +51,25 @@ int extractJsonInt(const String& body, const char* key, int fallback = -1) {
   int colon = body.indexOf(':', idx + pat.length());
   if (colon < 0) return fallback;
   int start = colon + 1;
-  while (start < (int)body.length() && (body[start] == ' ' || body[start] == '\t')) {
+  while (start < static_cast<int>(body.length()) && (body[start] == ' ' || body[start] == '\t')) {
     ++start;
   }
-  if (start >= (int)body.length()) return fallback;
+  if (start >= static_cast<int>(body.length())) return fallback;
   return body.substring(start).toInt();
+}
+
+float extractJsonFloat(const String& body, const char* key, float fallback = NAN) {
+  String pat = String("\"") + key + "\"";
+  int idx = body.indexOf(pat);
+  if (idx < 0) return fallback;
+  int colon = body.indexOf(':', idx + pat.length());
+  if (colon < 0) return fallback;
+  int start = colon + 1;
+  while (start < static_cast<int>(body.length()) && (body[start] == ' ' || body[start] == '\t')) {
+    ++start;
+  }
+  if (start >= static_cast<int>(body.length())) return fallback;
+  return body.substring(start).toFloat();
 }
 } // namespace
 
@@ -97,6 +111,8 @@ void WebApiServer::registerRoutes() {
   _server.on("/api/status", HTTP_GET, [this]() { handleStatus(); });
   _server.on("/api/presets/goto", HTTP_POST, [this]() { handleGoto(); });
   _server.on("/api/presets/save", HTTP_POST, [this]() { handleSave(); });
+  _server.on("/api/presets/add", HTTP_POST, [this]() { handleSave(); });
+  _server.on("/api/presets/delete", HTTP_POST, [this]() { handleDelete(); });
   _server.on("/api/move", HTTP_POST, [this]() { handleMove(); });
   _server.on("/api/stop", HTTP_POST, [this]() { handleStop(); });
   _server.on("/api/zero", HTTP_POST, [this]() { handleZero(); });
@@ -110,22 +126,23 @@ void WebApiServer::sendJson(int code, const String& payload) {
 
 void WebApiServer::handleStatus() {
   const float tgt = _posMgr.targetCm();
-  const String tgtStr = isnan(tgt) ? "null" : String(tgt, 1);
+  const String tgtStr = std::isnan(tgt) ? "null" : String(tgt, 1);
+  const bool isMoving = _posMgr.isMoving();
 
   String json = "{";
   json += "\"heightCm\":" + String(_currentCm, 1) + ",";
   json += "\"offsetCm\":" + String(_sensor.getOffset(), 1) + ",";
   json += "\"targetCm\":" + tgtStr + ",";
   json += "\"mode\":\"" + modeToStr(_posMgr.mode()) + "\",";
+  json += "\"moving\":" + String(isMoving ? "true" : "false") + ",";
   json += "\"presets\":[";
 
-  bool first = true;
-  for (uint8_t p = 0; p < PositionManager::NUM_PRESETS; ++p) {
-    if (!first) json += ",";
-    first = false;
-    json += "{\"preset\":" + String(p) +
-            ",\"name\":\"" + escapeJson(_posMgr.getPresetName(p)) + "\"" +
-            ",\"cm\":" + String(_posMgr.getPreset(p), 1) + "}";
+  const auto& presets = _posMgr.getPresets();
+  for (size_t i = 0; i < presets.size(); ++i) {
+    if (i > 0) json += ",";
+    json += "{\"id\":" + String(presets[i].id) +
+            ",\"name\":\"" + escapeJson(presets[i].name) + "\"" +
+            ",\"cm\":" + String(presets[i].heightCm, 1) + "}";
   }
   json += "]}";
   sendJson(200, json);
@@ -133,32 +150,52 @@ void WebApiServer::handleStatus() {
 
 void WebApiServer::handleGoto() {
   const String& body = _server.arg("plain");
-  int p = extractJsonInt(body, "preset", -1);
-  if (p < 0 || p >= (int)PositionManager::NUM_PRESETS) {
-    sendJson(400, "{\"error\":\"invalid preset\"}");
+  int id = extractJsonInt(body, "id", -1);
+  if (id < 0) {
+    id = extractJsonInt(body, "preset", -1);
+  }
+  if (id < 0) {
+    sendJson(400, "{\"error\":\"id required\"}");
     return;
   }
   _manualUp = false;
   _manualDown = false;
-  _posMgr.commandGoTo((uint8_t)p);
+  _posMgr.commandGoTo(static_cast<uint32_t>(id));
   sendJson(200, "{\"ok\":true}");
 }
 
 void WebApiServer::handleSave() {
   const String& body = _server.arg("plain");
-  int p = extractJsonInt(body, "preset", -1);
   String name = extractJsonString(body, "name");
-  if (p < 0 || p >= (int)PositionManager::NUM_PRESETS) {
-    sendJson(400, "{\"error\":\"invalid preset\"}");
+  float cm = extractJsonFloat(body, "cm", NAN);
+
+  if (std::isnan(cm) || cm < 0.0f) {
+    cm = _currentCm;
+  }
+
+  _posMgr.addPreset(name, cm);
+  sendJson(200, "{\"ok\":true}");
+}
+
+void WebApiServer::handleDelete() {
+  const String& body = _server.arg("plain");
+  int id = extractJsonInt(body, "id", -1);
+  if (id < 0) {
+    sendJson(400, "{\"error\":\"id required\"}");
     return;
   }
-  _posMgr.setPreset((uint8_t)p, _currentCm, name);
-  sendJson(200, "{\"ok\":true}");
+  bool deleted = _posMgr.deletePreset(static_cast<uint32_t>(id));
+  if (deleted) {
+    sendJson(200, "{\"ok\":true}");
+  } else {
+    sendJson(404, "{\"error\":\"not found\"}");
+  }
 }
 
 void WebApiServer::handleMove() {
   const String& body = _server.arg("plain");
   String dir = extractJsonString(body, "direction");
+
   if (dir == "up") {
     _manualUp = true;
     _manualDown = false;
@@ -183,8 +220,9 @@ void WebApiServer::handleStop() {
 }
 
 void WebApiServer::handleZero() {
-  _sensor.setOffset(_currentCm);
-  sendJson(200, "{\"ok\":true}");
+  _sensor.setZeroCurrent(_currentCm);
+  _posMgr.stop();
+  sendJson(200, "{\"ok\":true,\"offsetCm\":" + String(_sensor.getOffset(), 1) + "}");
 }
 
 void WebApiServer::handleWifiGet() {

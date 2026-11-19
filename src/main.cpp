@@ -55,7 +55,7 @@ void loop() {
   wifiMgr.handle();
   apiServer.handle();
 
-  const float heightCm = sensor.readDistanceMM();
+  const float heightCm = sensor.readDistanceCM();
   apiServer.setCurrentHeight(heightCm);
 
   if (apiServer.manualUpRequested() || apiServer.manualDownRequested()) {

@@ -1,5 +1,7 @@
 let holdTimer = null;
 let activeDir = null;
+let activeTargetId = null;
+let lastPresetsJson = '';
 
 async function api(path, body = {}) {
   const res = await fetch(path, {
@@ -53,21 +55,199 @@ window.addEventListener('blur', stopHold);
 bindHold('btnUp', 'up');
 bindHold('btnDown', 'down');
 
-document.getElementById('btnStop').addEventListener('click', () => {
+// Stopp-Button
+const btnStop = document.getElementById('btnStop');
+btnStop.addEventListener('click', () => {
   stopHold();
+  activeTargetId = null;
+  updateMovingUI(false);
   api('/api/stop').catch(() => {});
 });
 
-document.getElementById('btnZero').addEventListener('click', () => {
-  api('/api/zero').catch(() => {});
+// Nullpunkt-Button (dauerhaft speichern)
+const btnZero = document.getElementById('btnZero');
+btnZero.addEventListener('click', async () => {
+  const ok = confirm('Möchtest du die aktuelle Höhe als neuen Nullpunkt (0.0 cm) dauerhaft speichern?');
+  if (!ok) return;
+  try {
+    await api('/api/zero');
+  } catch (err) {
+    alert('Fehler beim Setzen des Nullpunkts: ' + err.message);
+  }
 });
 
-document.getElementById('btnSave').addEventListener('click', () => {
-  const preset = Number(document.getElementById('p').value);
-  const name = document.getElementById('name').value.trim();
-  api('/api/presets/save', { preset, name }).catch(() => {});
+// Preset hinzufügen
+const presetNameInput = document.getElementById('presetName');
+const btnAddPreset = document.getElementById('btnAddPreset');
+
+async function handleAddPreset() {
+  const name = presetNameInput.value.trim();
+  try {
+    await api('/api/presets/add', { name });
+    presetNameInput.value = '';
+  } catch (err) {
+    alert('Fehler beim Speichern des Presets: ' + err.message);
+  }
+}
+
+btnAddPreset.addEventListener('click', handleAddPreset);
+presetNameInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    handleAddPreset();
+  }
 });
 
+// Moving State UI Handling
+function updateMovingUI(isMoving, targetId = null) {
+  if (isMoving) {
+    document.body.classList.add('is-moving');
+  } else {
+    document.body.classList.remove('is-moving');
+    activeTargetId = null;
+  }
+
+  // Stopp bleibt IMMER aktiv
+  btnStop.disabled = false;
+
+  // Manuelle Tasten & Inputs sperren / freigeben
+  document.getElementById('btnUp').disabled = isMoving;
+  document.getElementById('btnDown').disabled = isMoving;
+  btnZero.disabled = isMoving;
+  btnAddPreset.disabled = isMoving;
+  presetNameInput.disabled = isMoving;
+
+  // Preset Buttons aktualisieren
+  document.querySelectorAll('.preset').forEach((row) => {
+    const rowId = Number(row.dataset.id);
+    const gotoBtn = row.querySelector('.btn-goto');
+    const delBtn = row.querySelector('.btn-del');
+
+    if (delBtn) delBtn.disabled = isMoving;
+
+    if (gotoBtn) {
+      gotoBtn.disabled = isMoving;
+      if (isMoving && targetId !== null && rowId === targetId) {
+        row.classList.add('active-target');
+        gotoBtn.textContent = 'Fährt... ⏳';
+      } else {
+        row.classList.remove('active-target');
+        gotoBtn.textContent = 'Anfahren';
+      }
+    }
+  });
+}
+
+// Preset-Liste rendern
+function renderPresets(presets, isMoving, targetCm) {
+  const box = document.getElementById('presets');
+  box.replaceChildren();
+
+  if (!presets || presets.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'preset-empty';
+    empty.textContent = 'Noch keine Presets vorhanden. Stelle eine Höhe ein und speichere sie ab.';
+    box.appendChild(empty);
+    return;
+  }
+
+  presets.forEach((item) => {
+    const row = document.createElement('div');
+    row.className = 'preset';
+    row.dataset.id = item.id;
+
+    const info = document.createElement('div');
+    info.className = 'preset-info';
+
+    const title = document.createElement('strong');
+    title.className = 'preset-name';
+    title.textContent = item.name;
+
+    const meta = document.createElement('span');
+    meta.className = 'preset-cm';
+    meta.textContent = `${Number(item.cm).toFixed(1)} cm`;
+
+    info.append(title, meta);
+
+    const actions = document.createElement('div');
+    actions.className = 'preset-actions';
+
+    const btnGoto = document.createElement('button');
+    btnGoto.className = 'primary btn-goto';
+    btnGoto.type = 'button';
+    btnGoto.textContent = 'Anfahren';
+    btnGoto.disabled = isMoving;
+
+    btnGoto.addEventListener('click', async () => {
+      activeTargetId = item.id;
+      updateMovingUI(true, item.id);
+      try {
+        await api('/api/presets/goto', { id: item.id });
+      } catch (err) {
+        updateMovingUI(false);
+      }
+    });
+
+    const btnDel = document.createElement('button');
+    btnDel.className = 'danger btn-del';
+    btnDel.type = 'button';
+    btnDel.title = 'Preset löschen';
+    btnDel.innerHTML = '&times;';
+    btnDel.disabled = isMoving;
+
+    btnDel.addEventListener('click', async () => {
+      const ok = confirm(`Preset "${item.name}" wirklich löschen?`);
+      if (!ok) return;
+      try {
+        await api('/api/presets/delete', { id: item.id });
+      } catch (err) {
+        alert('Fehler beim Löschen: ' + err.message);
+      }
+    });
+
+    actions.append(btnGoto, btnDel);
+    row.append(info, actions);
+    box.appendChild(row);
+  });
+}
+
+// Status & Polling
+async function refresh() {
+  try {
+    const res = await fetch('/api/status');
+    const data = await res.json();
+
+    document.getElementById('h').textContent = Number(data.heightCm).toFixed(1);
+
+    const isMoving = Boolean(data.moving);
+    const targetText =
+      data.targetCm !== null && data.targetCm !== undefined
+        ? ` → Ziel: ${Number(data.targetCm).toFixed(1)} cm`
+        : '';
+    document.getElementById('mode').textContent = `Modus: ${data.mode}${targetText}`;
+
+    // Wenn Ziel vorgegeben ist, aktives Preset bestimmen
+    if (isMoving && activeTargetId === null && data.targetCm !== null && data.presets) {
+      const match = data.presets.find(
+        (p) => Math.abs(p.cm - data.targetCm) < 0.2
+      );
+      if (match) activeTargetId = match.id;
+    }
+
+    // Presets nur neu aufbauen, wenn sich die Daten geändert haben
+    const currentJson = JSON.stringify(data.presets || []);
+    if (currentJson !== lastPresetsJson) {
+      lastPresetsJson = currentJson;
+      renderPresets(data.presets || [], isMoving, data.targetCm);
+    }
+
+    updateMovingUI(isMoving, activeTargetId);
+  } catch (err) {
+    document.getElementById('mode').textContent = 'Verbindung getrennt...';
+  }
+}
+
+// WLAN Modal Handling
 const wifiModal = document.getElementById('wifiModal');
 const btnOpenWifi = document.getElementById('btnOpenWifi');
 const btnCloseWifi = document.getElementById('btnCloseWifi');
@@ -142,52 +322,6 @@ async function loadWifiStatus() {
       ssidInput.value = w.ssid;
     }
   } catch (_) {}
-}
-
-async function refresh() {
-  try {
-    const res = await fetch('/api/status');
-    const data = await res.json();
-
-    document.getElementById('h').textContent = Number(data.heightCm).toFixed(1);
-
-    const targetText =
-      data.targetCm !== null && data.targetCm !== undefined
-        ? ` → Ziel: ${Number(data.targetCm).toFixed(1)} cm`
-        : '';
-    document.getElementById('mode').textContent = `Modus: ${data.mode}${targetText}`;
-
-    const box = document.getElementById('presets');
-    box.replaceChildren();
-
-    (data.presets || []).forEach((item) => {
-      const row = document.createElement('div');
-      row.className = 'preset';
-
-      const info = document.createElement('div');
-      const title = document.createElement('strong');
-      title.textContent = item.name;
-
-      const meta = document.createElement('span');
-      meta.className = 'sub';
-      meta.textContent = ` (Slot ${item.preset + 1} · ${Number(item.cm).toFixed(1)} cm)`;
-
-      info.append(title, meta);
-
-      const btn = document.createElement('button');
-      btn.className = 'primary';
-      btn.type = 'button';
-      btn.textContent = 'Anfahren';
-      btn.addEventListener('click', () => {
-        api('/api/presets/goto', { preset: item.preset }).catch(() => {});
-      });
-
-      row.append(info, btn);
-      box.appendChild(row);
-    });
-  } catch (err) {
-    document.getElementById('mode').textContent = 'Verbindung getrennt...';
-  }
 }
 
 refresh();
