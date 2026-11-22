@@ -31,12 +31,14 @@ void PositionManager::update(float currentHeightCm) {
 
   if (_mode == Mode::PresetUp) {
     if (_currentHeightCm >= (_targetCm - (_hysteresisCm / 2.0f))) {
+      Serial.printf("✅ [Fahrt] Zielhöhe erreicht: %.1f cm (Ist: %.1f cm)\n", _targetCm, _currentHeightCm);
       stop();
     } else {
       _setRelays(true, false);
     }
   } else if (_mode == Mode::PresetDown) {
     if (_currentHeightCm <= (_targetCm + (_hysteresisCm / 2.0f))) {
+      Serial.printf("✅ [Fahrt] Zielhöhe erreicht: %.1f cm (Ist: %.1f cm)\n", _targetCm, _currentHeightCm);
       stop();
     } else {
       _setRelays(false, true);
@@ -57,6 +59,7 @@ void PositionManager::commandGoToHeight(float target) {
   if (std::isnan(target) || target < 0.0f) return;
 
   if (std::fabs(_currentHeightCm - target) <= (_hysteresisCm / 2.0f)) {
+    Serial.printf("ℹ️ [Fahrt] Zielhöhe %.1f cm bereits erreicht (Ist: %.1f cm)\n", target, _currentHeightCm);
     stop();
     return;
   }
@@ -64,8 +67,10 @@ void PositionManager::commandGoToHeight(float target) {
   _targetCm = target;
   if (_targetCm > _currentHeightCm) {
     _mode = Mode::PresetUp;
+    Serial.printf("🔼 [Fahrt] Starte Aufwärtsfahrt: %.1f cm -> %.1f cm\n", _currentHeightCm, _targetCm);
   } else {
     _mode = Mode::PresetDown;
+    Serial.printf("🔽 [Fahrt] Starte Abwärtsfahrt: %.1f cm -> %.1f cm\n", _currentHeightCm, _targetCm);
   }
 }
 
@@ -87,6 +92,9 @@ void PositionManager::manualHold(bool up, bool down) {
 }
 
 void PositionManager::stop() {
+  if (_mode != Mode::Idle) {
+    Serial.println("🛑 [Fahrt] Gestoppt / Relais AUS");
+  }
   _mode = Mode::Idle;
   _targetCm = NAN;
   _setRelays(false, false);

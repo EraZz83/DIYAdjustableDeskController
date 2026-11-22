@@ -11,13 +11,13 @@
 namespace {
 constexpr int PIN_SDA = 21;
 constexpr int PIN_SCL = 22;
-constexpr int PIN_RELAY_UP = 26;
-constexpr int PIN_RELAY_DOWN = 27;
+constexpr int PIN_RELAY_UP = 12;
+constexpr int PIN_RELAY_DOWN = 13;
 constexpr bool RELAY_ACTIVE_HIGH = true;
 constexpr float HYSTERESIS_CM = 0.4f;
 
-constexpr const char* DEFAULT_WIFI_SSID = "";
-constexpr const char* DEFAULT_WIFI_PASS = "";
+constexpr const char* DEFAULT_WIFI_SSID = "TurkishAirlines_";
+constexpr const char* DEFAULT_WIFI_PASS = "123Polizei";
 constexpr const char* AP_SSID = "Liftoff-Setup";
 constexpr const char* AP_PASS = "liftoff123";
 constexpr const char* HOSTNAME = "liftoff";

@@ -158,6 +158,15 @@ void WebApiServer::handleGoto() {
     sendJson(400, "{\"error\":\"id required\"}");
     return;
   }
+
+  const auto* p = _posMgr.findPreset(static_cast<uint32_t>(id));
+  if (p) {
+    Serial.printf("🔘 [UI] Button gedrückt: ANFAHREN -> \"%s\" (Ziel: %.1f cm, Ist: %.1f cm)\n",
+                  p->name.c_str(), p->heightCm, _currentCm);
+  } else {
+    Serial.printf("🔘 [UI] Button gedrückt: ANFAHREN -> Preset ID %d\n", id);
+  }
+
   _manualUp = false;
   _manualDown = false;
   _posMgr.commandGoTo(static_cast<uint32_t>(id));
@@ -173,6 +182,9 @@ void WebApiServer::handleSave() {
     cm = _currentCm;
   }
 
+  Serial.printf("💾 [UI] Button gedrückt: PRESET SPEICHERN -> Name: \"%s\", Höhe: %.1f cm\n",
+                name.c_str(), cm);
+
   _posMgr.addPreset(name, cm);
   sendJson(200, "{\"ok\":true}");
 }
@@ -184,6 +196,15 @@ void WebApiServer::handleDelete() {
     sendJson(400, "{\"error\":\"id required\"}");
     return;
   }
+
+  const auto* p = _posMgr.findPreset(static_cast<uint32_t>(id));
+  if (p) {
+    Serial.printf("🗑️ [UI] Button gedrückt: PRESET LÖSCHEN -> \"%s\" (ID: %d, %.1f cm)\n",
+                  p->name.c_str(), id, p->heightCm);
+  } else {
+    Serial.printf("🗑️ [UI] Button gedrückt: PRESET LÖSCHEN -> ID: %d\n", id);
+  }
+
   bool deleted = _posMgr.deletePreset(static_cast<uint32_t>(id));
   if (deleted) {
     sendJson(200, "{\"ok\":true}");
@@ -197,14 +218,23 @@ void WebApiServer::handleMove() {
   String dir = extractJsonString(body, "direction");
 
   if (dir == "up") {
+    if (!_manualUp) {
+      Serial.printf("🔘 [UI] Button gedrückt: HOCH (Start manuelle Aufwärtsfahrt bei %.1f cm)\n", _currentCm);
+    }
     _manualUp = true;
     _manualDown = false;
     _lastManualMs = millis();
   } else if (dir == "down") {
+    if (!_manualDown) {
+      Serial.printf("🔘 [UI] Button gedrückt: RUNTER (Start manuelle Abwärtsfahrt bei %.1f cm)\n", _currentCm);
+    }
     _manualDown = true;
     _manualUp = false;
     _lastManualMs = millis();
   } else {
+    if (_manualUp || _manualDown) {
+      Serial.printf("⏹️ [UI] Button losgelassen: Manuelle Fahrt beendet (Position: %.1f cm)\n", _currentCm);
+    }
     _manualUp = false;
     _manualDown = false;
     _posMgr.stop();
@@ -213,6 +243,7 @@ void WebApiServer::handleMove() {
 }
 
 void WebApiServer::handleStop() {
+  Serial.printf("🛑 [UI] Button gedrückt: STOPP (Position: %.1f cm)\n", _currentCm);
   _manualUp = false;
   _manualDown = false;
   _posMgr.stop();
@@ -220,6 +251,7 @@ void WebApiServer::handleStop() {
 }
 
 void WebApiServer::handleZero() {
+  Serial.printf("🎯 [UI] Button gedrückt: NULLPUNKT (aktuelle Höhe: %.1f cm wird dauerhaft als 0.0 cm kalibriert)\n", _currentCm);
   _sensor.setZeroCurrent(_currentCm);
   _posMgr.stop();
   sendJson(200, "{\"ok\":true,\"offsetCm\":" + String(_sensor.getOffset(), 1) + "}");
@@ -247,6 +279,8 @@ void WebApiServer::handleWifiSave() {
     sendJson(400, "{\"error\":\"ssid required\"}");
     return;
   }
+
+  Serial.printf("📶 [UI] Button gedrückt: WLAN SPEICHERN -> Neue SSID: \"%s\" (ESP32 startet neu...)\n", ssid.c_str());
 
   _wifiMgr.saveCredentials(ssid, password);
   sendJson(200, "{\"ok\":true,\"restarting\":true}");

@@ -26,6 +26,7 @@ function pulseMove(dir) {
 function startHold(dir) {
   if (activeDir === dir) return;
   activeDir = dir;
+  console.log(`Button gedrückt: ${dir.toUpperCase()} (Halten gestartet)`);
   pulseMove(dir);
   clearInterval(holdTimer);
   holdTimer = setInterval(() => pulseMove(dir), 350);
@@ -33,6 +34,7 @@ function startHold(dir) {
 
 function stopHold() {
   if (!activeDir) return;
+  console.log(`Button losgelassen: ${activeDir.toUpperCase()} (Halten beendet)`);
   activeDir = null;
   clearInterval(holdTimer);
   holdTimer = null;
@@ -58,6 +60,7 @@ bindHold('btnDown', 'down');
 // Stopp-Button
 const btnStop = document.getElementById('btnStop');
 btnStop.addEventListener('click', () => {
+  console.log('Button geklickt: STOPP');
   stopHold();
   activeTargetId = null;
   updateMovingUI(false);
@@ -67,6 +70,7 @@ btnStop.addEventListener('click', () => {
 // Nullpunkt-Button (dauerhaft speichern)
 const btnZero = document.getElementById('btnZero');
 btnZero.addEventListener('click', async () => {
+  console.log('Button geklickt: NULLPUNKT');
   const ok = confirm('Möchtest du die aktuelle Höhe als neuen Nullpunkt (0.0 cm) dauerhaft speichern?');
   if (!ok) return;
   try {
@@ -82,6 +86,7 @@ const btnAddPreset = document.getElementById('btnAddPreset');
 
 async function handleAddPreset() {
   const name = presetNameInput.value.trim();
+  console.log('Button geklickt: PRESET SPEICHERN', { name });
   try {
     await api('/api/presets/add', { name });
     presetNameInput.value = '';
@@ -179,6 +184,7 @@ function renderPresets(presets, isMoving, targetCm) {
     btnGoto.disabled = isMoving;
 
     btnGoto.addEventListener('click', async () => {
+      console.log('Button geklickt: ANFAHREN', item);
       activeTargetId = item.id;
       updateMovingUI(true, item.id);
       try {
@@ -196,6 +202,7 @@ function renderPresets(presets, isMoving, targetCm) {
     btnDel.disabled = isMoving;
 
     btnDel.addEventListener('click', async () => {
+      console.log('Button geklickt: PRESET LÖSCHEN', item);
       const ok = confirm(`Preset "${item.name}" wirklich löschen?`);
       if (!ok) return;
       try {
