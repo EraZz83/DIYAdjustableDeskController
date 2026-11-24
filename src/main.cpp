@@ -55,7 +55,15 @@ void loop() {
   wifiMgr.handle();
   apiServer.handle();
 
-  const float heightCm = sensor.readDistanceCM();
+  const float cmRaw = sensor.readDistanceCM();
+  static float cmFilt = -1.0f;
+  if (cmFilt < 0.0f) {
+    cmFilt = cmRaw;
+  } else if (cmRaw > 0.0f) {
+    cmFilt = 0.25f * cmRaw + 0.75f * cmFilt;
+  }
+  const float heightCm = cmFilt;
+
   apiServer.setCurrentHeight(heightCm);
 
   if (apiServer.manualUpRequested() || apiServer.manualDownRequested()) {
@@ -66,5 +74,5 @@ void loop() {
   }
 
   posMgr.update(heightCm);
-  delay(20);
+  delay(10);
 }

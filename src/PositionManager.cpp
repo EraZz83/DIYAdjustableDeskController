@@ -18,13 +18,56 @@ void PositionManager::begin() {
   pinMode(_pinUp, OUTPUT);
   pinMode(_pinDown, OUTPUT);
   _setRelays(false, false);
+  _loadLimitsFromNvs();
   _loadPresetsFromNvs();
+}
+
+void PositionManager::setLimits(float minCm, float maxCm) {
+  if (minCm >= maxCm) {
+    Serial.printf("❌ Ungültige Limiten: Min (%.1f) muss kleiner als Max (%.1f) sein!\n", minCm, maxCm);
+    return;
+  }
+  _minLimitCm = minCm;
+  _maxLimitCm = maxCm;
+  _saveLimitsToNvs();
+  Serial.printf("💾 Tisch-Limiten gespeichert: Min = %.1f cm, Max = %.1f cm\n", _minLimitCm, _maxLimitCm);
+}
+
+void PositionManager::_loadLimitsFromNvs() {
+  Preferences nvs;
+  if (nvs.begin("desk", true)) {
+    _minLimitCm = nvs.getFloat("lim_min", 50.0f);
+    _maxLimitCm = nvs.getFloat("lim_max", 130.0f);
+    nvs.end();
+    Serial.printf("📍 Geladene Tisch-Limiten: Min = %.1f cm, Max = %.1f cm\n", _minLimitCm, _maxLimitCm);
+  }
+}
+
+void PositionManager::_saveLimitsToNvs() {
+  Preferences nvs;
+  if (nvs.begin("desk", false)) {
+    nvs.putFloat("lim_min", _minLimitCm);
+    nvs.putFloat("lim_max", _maxLimitCm);
+    nvs.end();
+  }
 }
 
 void PositionManager::update(float currentHeightCm) {
   _currentHeightCm = currentHeightCm;
 
   if (std::isnan(_currentHeightCm)) {
+    stop();
+    return;
+  }
+
+  // Sicherheitsstopp an den konfigurierten Grenzwerten
+  if ((_mode == Mode::PresetUp || _mode == Mode::ManualUp) && (_currentHeightCm >= _maxLimitCm)) {
+    Serial.printf("⛔ [Limit] Oberes Limit (%.1f cm) erreicht! Ist: %.1f cm -> Stopp\n", _maxLimitCm, _currentHeightCm);
+    stop();
+    return;
+  }
+  if ((_mode == Mode::PresetDown || _mode == Mode::ManualDown) && (_currentHeightCm <= _minLimitCm)) {
+    Serial.printf("⛔ [Limit] Unteres Limit (%.1f cm) erreicht! Ist: %.1f cm -> Stopp\n", _minLimitCm, _currentHeightCm);
     stop();
     return;
   }
@@ -58,6 +101,17 @@ void PositionManager::commandGoTo(uint32_t presetId) {
 void PositionManager::commandGoToHeight(float target) {
   if (std::isnan(target) || target < 0.0f) return;
 
+  // Begrenzung auf obere und untere Limite
+  if (target > _maxLimitCm) {
+    Serial.printf("⚠️ Sollwert %.1f cm überschreitet oberes Limit (%.1f cm) -> auf %.1f cm begrenzt\n",
+                  target, _maxLimitCm, _maxLimitCm);
+    target = _maxLimitCm;
+  } else if (target < _minLimitCm) {
+    Serial.printf("⚠️ Sollwert %.1f cm unterschreitet unteres Limit (%.1f cm) -> auf %.1f cm begrenzt\n",
+                  target, _minLimitCm, _minLimitCm);
+    target = _minLimitCm;
+  }
+
   if (std::fabs(_currentHeightCm - target) <= (_hysteresisCm / 2.0f)) {
     Serial.printf("ℹ️ [Fahrt] Zielhöhe %.1f cm bereits erreicht (Ist: %.1f cm)\n", target, _currentHeightCm);
     stop();
@@ -67,10 +121,12 @@ void PositionManager::commandGoToHeight(float target) {
   _targetCm = target;
   if (_targetCm > _currentHeightCm) {
     _mode = Mode::PresetUp;
-    Serial.printf("🔼 [Fahrt] Starte Aufwärtsfahrt: %.1f cm -> %.1f cm\n", _currentHeightCm, _targetCm);
+    Serial.printf("🔼 [Fahrt] Starte Aufwärtsfahrt: %.1f cm -> %.1f cm (Limit: %.1f..%.1f cm)\n",
+                  _currentHeightCm, _targetCm, _minLimitCm, _maxLimitCm);
   } else {
     _mode = Mode::PresetDown;
-    Serial.printf("🔽 [Fahrt] Starte Abwärtsfahrt: %.1f cm -> %.1f cm\n", _currentHeightCm, _targetCm);
+    Serial.printf("🔽 [Fahrt] Starte Abwärtsfahrt: %.1f cm -> %.1f cm (Limit: %.1f..%.1f cm)\n",
+                  _currentHeightCm, _targetCm, _minLimitCm, _maxLimitCm);
   }
 }
 
@@ -81,9 +137,19 @@ void PositionManager::manualHold(bool up, bool down) {
   }
 
   if (up) {
+    if (_currentHeightCm >= _maxLimitCm) {
+      Serial.printf("⛔ [Manuell] Oberes Limit (%.1f cm) erreicht, keine Aufwärtsfahrt möglich\n", _maxLimitCm);
+      stop();
+      return;
+    }
     _mode = Mode::ManualUp;
     _setRelays(true, false);
   } else if (down) {
+    if (_currentHeightCm <= _minLimitCm) {
+      Serial.printf("⛔ [Manuell] Unteres Limit (%.1f cm) erreicht, keine Abwärtsfahrt möglich\n", _minLimitCm);
+      stop();
+      return;
+    }
     _mode = Mode::ManualDown;
     _setRelays(false, true);
   } else {
@@ -121,6 +187,10 @@ bool PositionManager::addPreset(const String& name, float heightCm) {
     pName = "Preset " + String(newId);
   }
 
+  // Auch Preset-Werte auf die Limiten begrenzen
+  if (heightCm > _maxLimitCm) heightCm = _maxLimitCm;
+  if (heightCm < _minLimitCm) heightCm = _minLimitCm;
+
   _presets.push_back({newId, pName, heightCm});
   _savePresetsToNvs();
   return true;
@@ -141,6 +211,8 @@ bool PositionManager::updatePreset(uint32_t id, const String& name, float height
   for (auto& p : _presets) {
     if (p.id == id) {
       if (name.length() > 0) p.name = name;
+      if (heightCm > _maxLimitCm) heightCm = _maxLimitCm;
+      if (heightCm < _minLimitCm) heightCm = _minLimitCm;
       p.heightCm = heightCm;
       _savePresetsToNvs();
       return true;
@@ -198,6 +270,20 @@ void PositionManager::_savePresetsToNvs() {
 }
 
 void PositionManager::_setRelays(bool up, bool down) {
+  static bool lastUp = false;
+  static bool lastDown = false;
+
+  if (up != lastUp || down != lastDown) {
+    lastUp = up;
+    lastDown = down;
+    const int upLevel = _activeHigh ? (up ? HIGH : LOW) : (up ? LOW : HIGH);
+    const int downLevel = _activeHigh ? (down ? HIGH : LOW) : (down ? LOW : HIGH);
+    Serial.printf("⚡ [Relais] UP(GPIO %d)=%s [Pin=%s] | DOWN(GPIO %d)=%s [Pin=%s] (Polarität: %s)\n",
+                  _pinUp, up ? "EIN" : "AUS", upLevel == HIGH ? "HIGH" : "LOW",
+                  _pinDown, down ? "EIN" : "AUS", downLevel == HIGH ? "HIGH" : "LOW",
+                  _activeHigh ? "Active-HIGH" : "Active-LOW");
+  }
+
   if (_activeHigh) {
     digitalWrite(_pinUp, up ? HIGH : LOW);
     digitalWrite(_pinDown, down ? HIGH : LOW);

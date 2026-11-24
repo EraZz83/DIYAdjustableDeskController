@@ -113,9 +113,11 @@ void WebApiServer::registerRoutes() {
   _server.on("/api/presets/save", HTTP_POST, [this]() { handleSave(); });
   _server.on("/api/presets/add", HTTP_POST, [this]() { handleSave(); });
   _server.on("/api/presets/delete", HTTP_POST, [this]() { handleDelete(); });
+  _server.on("/api/target", HTTP_POST, [this]() { handleTarget(); });
+  _server.on("/api/offset", HTTP_POST, [this]() { handleOffset(); });
+  _server.on("/api/limits", HTTP_POST, [this]() { handleLimitsSave(); });
   _server.on("/api/move", HTTP_POST, [this]() { handleMove(); });
   _server.on("/api/stop", HTTP_POST, [this]() { handleStop(); });
-  _server.on("/api/zero", HTTP_POST, [this]() { handleZero(); });
   _server.on("/api/wifi", HTTP_GET, [this]() { handleWifiGet(); });
   _server.on("/api/wifi/save", HTTP_POST, [this]() { handleWifiSave(); });
 }
@@ -133,6 +135,8 @@ void WebApiServer::handleStatus() {
   json += "\"heightCm\":" + String(_currentCm, 1) + ",";
   json += "\"offsetCm\":" + String(_sensor.getOffset(), 1) + ",";
   json += "\"targetCm\":" + tgtStr + ",";
+  json += "\"limitMin\":" + String(_posMgr.minLimitCm(), 1) + ",";
+  json += "\"limitMax\":" + String(_posMgr.maxLimitCm(), 1) + ",";
   json += "\"mode\":\"" + modeToStr(_posMgr.mode()) + "\",";
   json += "\"moving\":" + String(isMoving ? "true" : "false") + ",";
   json += "\"presets\":[";
@@ -171,6 +175,25 @@ void WebApiServer::handleGoto() {
   _manualDown = false;
   _posMgr.commandGoTo(static_cast<uint32_t>(id));
   sendJson(200, "{\"ok\":true}");
+}
+
+void WebApiServer::handleTarget() {
+  const String& body = _server.arg("plain");
+  float targetCm = extractJsonFloat(body, "targetCm", NAN);
+
+  if (std::isnan(targetCm)) {
+    sendJson(400, "{\"error\":\"targetCm required\"}");
+    return;
+  }
+
+  Serial.printf("🎯 [UI] Sollwert eingegeben: %.1f cm (Fahre dorthin...)\n", targetCm);
+
+  _manualUp = false;
+  _manualDown = false;
+  _posMgr.commandGoToHeight(targetCm);
+
+  String resp = "{\"ok\":true,\"targetCm\":" + String(_posMgr.targetCm(), 1) + "}";
+  sendJson(200, resp);
 }
 
 void WebApiServer::handleSave() {
@@ -213,6 +236,48 @@ void WebApiServer::handleDelete() {
   }
 }
 
+void WebApiServer::handleOffset() {
+  const String& body = _server.arg("plain");
+  float offsetCm = extractJsonFloat(body, "offsetCm", NAN);
+
+  if (std::isnan(offsetCm)) {
+    sendJson(400, "{\"error\":\"offsetCm required\"}");
+    return;
+  }
+
+  _sensor.setOffset(offsetCm);
+  Serial.printf("⚙️ [Offset] Sensor-Offset (Totbereich) auf %.1f cm gesetzt\n", _sensor.getOffset());
+
+  String resp = "{\"ok\":true,\"offsetCm\":" + String(_sensor.getOffset(), 1) + "}";
+  sendJson(200, resp);
+}
+
+void WebApiServer::handleLimitsSave() {
+  const String& body = _server.arg("plain");
+  float minCm = extractJsonFloat(body, "min", NAN);
+  float maxCm = extractJsonFloat(body, "max", NAN);
+  float offsetCm = extractJsonFloat(body, "offsetCm", NAN);
+
+  if (!std::isnan(offsetCm)) {
+    _sensor.setOffset(offsetCm);
+    Serial.printf("⚙️ [Offset] Sensor-Offset (Totbereich) auf %.1f cm gesetzt\n", _sensor.getOffset());
+  }
+
+  if (!std::isnan(minCm) && !std::isnan(maxCm)) {
+    if (minCm < maxCm) {
+      _posMgr.setLimits(minCm, maxCm);
+    } else {
+      sendJson(400, "{\"error\":\"invalid limits (min must be less than max)\"}");
+      return;
+    }
+  }
+
+  String resp = "{\"ok\":true,\"min\":" + String(_posMgr.minLimitCm(), 1) +
+                ",\"max\":" + String(_posMgr.maxLimitCm(), 1) +
+                ",\"offsetCm\":" + String(_sensor.getOffset(), 1) + "}";
+  sendJson(200, resp);
+}
+
 void WebApiServer::handleMove() {
   const String& body = _server.arg("plain");
   String dir = extractJsonString(body, "direction");
@@ -248,13 +313,6 @@ void WebApiServer::handleStop() {
   _manualDown = false;
   _posMgr.stop();
   sendJson(200, "{\"ok\":true}");
-}
-
-void WebApiServer::handleZero() {
-  Serial.printf("🎯 [UI] Button gedrückt: NULLPUNKT (aktuelle Höhe: %.1f cm wird dauerhaft als 0.0 cm kalibriert)\n", _currentCm);
-  _sensor.setZeroCurrent(_currentCm);
-  _posMgr.stop();
-  sendJson(200, "{\"ok\":true,\"offsetCm\":" + String(_sensor.getOffset(), 1) + "}");
 }
 
 void WebApiServer::handleWifiGet() {

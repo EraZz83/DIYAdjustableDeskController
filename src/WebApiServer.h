@@ -29,16 +29,18 @@ private:
   bool _manualUp = false;
   bool _manualDown = false;
   uint32_t _lastManualMs = 0;
-  static constexpr uint32_t MANUAL_TIMEOUT_MS = 600;
+  static constexpr uint32_t MANUAL_TIMEOUT_MS = 1000;
 
   void registerRoutes();
   void handleStatus();
   void handleGoto();
+  void handleTarget();
   void handleSave();
   void handleDelete();
   void handleMove();
   void handleStop();
-  void handleZero();
+  void handleOffset();
+  void handleLimitsSave();
   void handleWifiGet();
   void handleWifiSave();
 

@@ -2,6 +2,9 @@ let holdTimer = null;
 let activeDir = null;
 let activeTargetId = null;
 let lastPresetsJson = '';
+let currentLimitMin = 50.0;
+let currentLimitMax = 130.0;
+let currentOffsetCm = 0.0;
 
 async function api(path, body = {}) {
   const res = await fetch(path, {
@@ -29,7 +32,7 @@ function startHold(dir) {
   console.log(`Button gedrückt: ${dir.toUpperCase()} (Halten gestartet)`);
   pulseMove(dir);
   clearInterval(holdTimer);
-  holdTimer = setInterval(() => pulseMove(dir), 350);
+  holdTimer = setInterval(() => pulseMove(dir), 250);
 }
 
 function stopHold() {
@@ -67,16 +70,46 @@ btnStop.addEventListener('click', () => {
   api('/api/stop').catch(() => {});
 });
 
-// Nullpunkt-Button (dauerhaft speichern)
-const btnZero = document.getElementById('btnZero');
-btnZero.addEventListener('click', async () => {
-  console.log('Button geklickt: NULLPUNKT');
-  const ok = confirm('Möchtest du die aktuelle Höhe als neuen Nullpunkt (0.0 cm) dauerhaft speichern?');
-  if (!ok) return;
+// Sollwert-Steuerung (Target Height)
+const targetInput = document.getElementById('targetInput');
+const btnStartTarget = document.getElementById('btnStartTarget');
+const targetHint = document.getElementById('targetHint');
+
+async function handleStartTarget() {
+  const rawVal = parseFloat(targetInput.value);
+  if (isNaN(rawVal)) {
+    targetHint.textContent = 'Bitte eine gültige Zahl eingeben.';
+    return;
+  }
+
+  let val = rawVal;
+  if (val > currentLimitMax) {
+    val = currentLimitMax;
+    targetInput.value = val.toFixed(1);
+    targetHint.textContent = `Auf oberes Limit (${val.toFixed(1)} cm) gesetzt`;
+  } else if (val < currentLimitMin) {
+    val = currentLimitMin;
+    targetInput.value = val.toFixed(1);
+    targetHint.textContent = `Auf unteres Limit (${val.toFixed(1)} cm) gesetzt`;
+  } else {
+    targetHint.textContent = '';
+  }
+
+  console.log(`Starte Fahrt zu Sollwert: ${val} cm`);
+  updateMovingUI(true);
   try {
-    await api('/api/zero');
+    await api('/api/target', { targetCm: val });
   } catch (err) {
-    alert('Fehler beim Setzen des Nullpunkts: ' + err.message);
+    alert('Fehler beim Anfahren: ' + err.message);
+    updateMovingUI(false);
+  }
+}
+
+btnStartTarget.addEventListener('click', handleStartTarget);
+targetInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    handleStartTarget();
   }
 });
 
@@ -118,9 +151,10 @@ function updateMovingUI(isMoving, targetId = null) {
   // Manuelle Tasten & Inputs sperren / freigeben
   document.getElementById('btnUp').disabled = isMoving;
   document.getElementById('btnDown').disabled = isMoving;
-  btnZero.disabled = isMoving;
   btnAddPreset.disabled = isMoving;
   presetNameInput.disabled = isMoving;
+  targetInput.disabled = isMoving;
+  btnStartTarget.disabled = isMoving;
 
   // Preset Buttons aktualisieren
   document.querySelectorAll('.preset').forEach((row) => {
@@ -226,6 +260,13 @@ async function refresh() {
 
     document.getElementById('h').textContent = Number(data.heightCm).toFixed(1);
 
+    if (data.offsetCm !== undefined) currentOffsetCm = Number(data.offsetCm);
+    if (data.limitMin !== undefined) currentLimitMin = Number(data.limitMin);
+    if (data.limitMax !== undefined) currentLimitMax = Number(data.limitMax);
+
+    targetInput.min = currentLimitMin;
+    targetInput.max = currentLimitMax;
+
     const isMoving = Boolean(data.moving);
     const targetText =
       data.targetCm !== null && data.targetCm !== undefined
@@ -254,37 +295,81 @@ async function refresh() {
   }
 }
 
-// WLAN Modal Handling
-const wifiModal = document.getElementById('wifiModal');
-const btnOpenWifi = document.getElementById('btnOpenWifi');
-const btnCloseWifi = document.getElementById('btnCloseWifi');
+// Einstellungen Modal Handling (Zahnrad)
+const settingsModal = document.getElementById('settingsModal');
+const btnOpenSettings = document.getElementById('btnOpenSettings');
+const btnCloseSettings = document.getElementById('btnCloseSettings');
 
-function openWifiModal() {
-  wifiModal.classList.add('open');
-  wifiModal.setAttribute('aria-hidden', 'false');
+const sensorOffsetInput = document.getElementById('sensorOffset');
+const limitMinInput = document.getElementById('limitMin');
+const limitMaxInput = document.getElementById('limitMax');
+const btnSaveSettings = document.getElementById('btnSaveSettings');
+const settingsFeedback = document.getElementById('settingsFeedback');
+
+function openSettingsModal() {
+  settingsModal.classList.add('open');
+  settingsModal.setAttribute('aria-hidden', 'false');
+  sensorOffsetInput.value = currentOffsetCm.toFixed(1);
+  limitMinInput.value = currentLimitMin.toFixed(1);
+  limitMaxInput.value = currentLimitMax.toFixed(1);
+  settingsFeedback.textContent = '';
   loadWifiStatus();
 }
 
-function closeWifiModal() {
-  wifiModal.classList.remove('open');
-  wifiModal.setAttribute('aria-hidden', 'true');
+function closeSettingsModal() {
+  settingsModal.classList.remove('open');
+  settingsModal.setAttribute('aria-hidden', 'true');
 }
 
-btnOpenWifi.addEventListener('click', openWifiModal);
-btnCloseWifi.addEventListener('click', closeWifiModal);
+btnOpenSettings.addEventListener('click', openSettingsModal);
+btnCloseSettings.addEventListener('click', closeSettingsModal);
 
-wifiModal.addEventListener('click', (e) => {
-  if (e.target === wifiModal) {
-    closeWifiModal();
+settingsModal.addEventListener('click', (e) => {
+  if (e.target === settingsModal) {
+    closeSettingsModal();
   }
 });
 
 document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape' && wifiModal.classList.contains('open')) {
-    closeWifiModal();
+  if (e.key === 'Escape' && settingsModal.classList.contains('open')) {
+    closeSettingsModal();
   }
 });
 
+// Offset & Limiten gemeinsam speichern
+btnSaveSettings.addEventListener('click', async () => {
+  const offsetCm = parseFloat(sensorOffsetInput.value) || 0.0;
+  const min = parseFloat(limitMinInput.value);
+  const max = parseFloat(limitMaxInput.value);
+
+  if (isNaN(min) || isNaN(max) || min >= max) {
+    settingsFeedback.textContent = 'Fehler: Min-Limite muss kleiner als Max-Limite sein!';
+    settingsFeedback.style.color = '#ff7582';
+    return;
+  }
+
+  try {
+    const res = await fetch('/api/limits', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ min, max, offsetCm })
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    currentOffsetCm = data.offsetCm !== undefined ? data.offsetCm : offsetCm;
+    currentLimitMin = data.min;
+    currentLimitMax = data.max;
+    settingsFeedback.textContent = `Gespeichert! (Offset: ${currentOffsetCm.toFixed(1)} cm, Min: ${data.min.toFixed(1)} cm, Max: ${data.max.toFixed(1)} cm)`;
+    settingsFeedback.style.color = '#54e38e';
+    setTimeout(() => { if (settingsFeedback) settingsFeedback.textContent = ''; }, 3500);
+    await refresh();
+  } catch (err) {
+    settingsFeedback.textContent = 'Fehler beim Speichern der Einstellungen.';
+    settingsFeedback.style.color = '#ff7582';
+  }
+});
+
+// WLAN Speichern
 document.getElementById('btnWifiSave').addEventListener('click', async () => {
   const ssid = document.getElementById('wifiSsid').value.trim();
   const password = document.getElementById('wifiPass').value;

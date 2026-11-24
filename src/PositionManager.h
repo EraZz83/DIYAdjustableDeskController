@@ -39,6 +39,10 @@ public:
   float targetCm() const { return _targetCm; }
   float hysteresisCm() const { return _hysteresisCm; }
 
+  float minLimitCm() const { return _minLimitCm; }
+  float maxLimitCm() const { return _maxLimitCm; }
+  void setLimits(float minCm, float maxCm);
+
   const std::vector<Preset>& getPresets() const { return _presets; }
   bool addPreset(const String& name, float heightCm);
   bool deletePreset(uint32_t id);
@@ -55,10 +59,15 @@ private:
   float _targetCm;
   float _currentHeightCm;
 
+  float _minLimitCm = 50.0f;
+  float _maxLimitCm = 130.0f;
+
   std::vector<Preset> _presets;
 
   Preferences _nvs;
   void _loadPresetsFromNvs();
   void _savePresetsToNvs();
+  void _loadLimitsFromNvs();
+  void _saveLimitsToNvs();
   void _setRelays(bool up, bool down);
 };

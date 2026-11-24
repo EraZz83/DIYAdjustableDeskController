@@ -7,18 +7,19 @@
 class VL53L1X_Sensor {
 public:
     bool begin(bool debugInConsole = true);
-    int   readDistanceMM();                // korrigierte Distanz in mm
+    int   readDistanceMM();                // korrigierte Distanz (Rohwert + Offset) in mm (non-blocking)
     float readDistanceCM();               // korrigierte Distanz in cm
-    void  setZeroCurrent(float currentCm);// Setzt aktuellen Messwert dauerhaft auf 0.0 cm
-    void  setOffset(float offsetValueCm); // Offset in cm setzen
+    void  setOffset(float offsetValueCm); // Offset (z.B. Totbereich / Montagehöhe) in cm setzen & in NVS speichern
     float getOffset() const;              // Offset in cm zurückgeben
-    void  resetOffset();                  // Offset auf 0 zurücksetzen
 
 private:
     SFEVL53L1X sensor;
     bool dbg = false;
 
-    // Offset intern in Millimetern
+    // Letzter Rohwert in Millimetern für non-blocking Abfrage
+    int _lastRawMM = 0;
+
+    // Offset intern in Millimetern (wird zum Rohwert addiert)
     int offsetMM = 0;
 
     static constexpr const char* NAMESPACE = "desk";
