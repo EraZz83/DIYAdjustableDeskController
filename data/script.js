@@ -212,7 +212,7 @@ function renderPresets(presets, isMoving, targetCm) {
     actions.className = 'preset-actions';
 
     const btnGoto = document.createElement('button');
-    btnGoto.className = 'primary btn-goto';
+    btnGoto.className = 'btn btn-primary btn-goto';
     btnGoto.type = 'button';
     btnGoto.textContent = 'Anfahren';
     btnGoto.disabled = isMoving;
@@ -229,7 +229,7 @@ function renderPresets(presets, isMoving, targetCm) {
     });
 
     const btnDel = document.createElement('button');
-    btnDel.className = 'danger btn-del';
+    btnDel.className = 'btn btn-del';
     btnDel.type = 'button';
     btnDel.title = 'Preset löschen';
     btnDel.innerHTML = '&times;';

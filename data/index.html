@@ -2,101 +2,227 @@
 <html lang="de">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Liftoff — Tischsteuerung</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Liftoff — Desk Controller</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <!-- Einstellungen Modal (Zahnrad Menü) -->
+
+  <!-- ═══════════════════════════════════════
+       SETTINGS MODAL
+  ════════════════════════════════════════ -->
   <div id="settingsModal" class="modal-overlay" aria-hidden="true">
     <div class="modal-content" role="dialog" aria-modal="true" aria-labelledby="settingsModalTitle">
+
       <div class="modal-header">
-        <h2 id="settingsModalTitle">Einstellungen</h2>
-        <button id="btnCloseSettings" class="close-modal" type="button" aria-label="Schließen">&times;</button>
-      </div>
-
-      <!-- Sektion 1: Kalibrierung & Limiten -->
-      <div class="settings-section">
-        <h3>Höhen-Offset &amp; Limiten</h3>
-        <p class="sub">Der Offset (z.B. Totbereich oder Montagehöhe) wird zur Sensor-Distanz addiert.</p>
-
-        <div class="field-col" style="margin-bottom: 12px;">
-          <label for="sensorOffset">Sensor-Offset / Totbereich (cm)</label>
-          <input id="sensorOffset" type="number" step="0.5" placeholder="z.B. 15.0" />
+        <div class="modal-title-group">
+          <svg class="modal-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+          </svg>
+          <h2 id="settingsModalTitle">Einstellungen</h2>
         </div>
-
-        <div class="limits-grid">
-          <div class="field-col">
-            <label for="limitMin">Untere Limite (cm)</label>
-            <input id="limitMin" type="number" step="0.5" placeholder="z.B. 65.0" />
-          </div>
-          <div class="field-col">
-            <label for="limitMax">Obere Limite (cm)</label>
-            <input id="limitMax" type="number" step="0.5" placeholder="z.B. 125.0" />
-          </div>
-        </div>
-        <button id="btnSaveSettings" class="primary full-width" type="button" style="margin-top: 12px;">Offset &amp; Limiten speichern</button>
-        <p id="settingsFeedback" class="sub"></p>
-      </div>
-
-      <hr class="modal-divider" />
-
-      <!-- Sektion 2: WLAN -->
-      <div class="settings-section">
-        <h3>WLAN-Verbindung</h3>
-        <p id="wifiStatus" class="sub">Lade WLAN-Status...</p>
-        <div class="row">
-          <input id="wifiSsid" type="text" placeholder="WLAN SSID" maxlength="63" />
-          <input id="wifiPass" type="password" placeholder="Neues Passwort (optional)" />
-          <button id="btnWifiSave" class="primary full-width" type="button">WLAN speichern &amp; Neustart</button>
-        </div>
-        <p id="wifiFeedback" class="sub"></p>
-      </div>
-    </div>
-  </div>
-
-  <main class="container">
-    <section class="card">
-      <div class="card-header">
-        <h1>Liftoff Tischsteuerung</h1>
-        <button id="btnOpenSettings" class="icon-btn" type="button" title="Einstellungen (Offset, Limiten &amp; WLAN)" aria-label="Einstellungen öffnen">
-          <svg class="icon-img" viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M19.14,12.94c0.04-0.3,0.06-0.61,0.06-0.94c0-0.32-0.02-0.64-0.06-0.94l2.03-1.58c0.18-0.14,0.23-0.41,0.12-0.61 l-1.92-3.32c-0.12-0.21-0.37-0.29-0.59-0.22l-2.39,0.96c-0.5-0.38-1.06-0.7-1.67-0.94l-0.36-2.54C14.46,2.17,14.22,2,13.99,2 H10.01C9.78,2,9.54,2.17,9.51,2.4L9.15,4.94C8.54,5.18,7.98,5.5,7.48,5.88L5.09,4.92C4.87,4.84,4.62,4.92,4.5,5.14L2.58,8.46 C2.47,8.66,2.52,8.94,2.7,9.08l2.03,1.58C4.69,10.96,4.68,11.28,4.68,11.62c0,0.34,0.01,0.66,0.06,0.94l-2.03,1.58 c-0.18,0.14-0.23,0.41-0.12,0.61l1.92,3.32c0.12,0.21,0.37,0.29,0.59,0.22l2.39-0.96c0.5,0.38,1.06,0.7,1.67,0.94l0.36,2.54 c0.03,0.24,0.27,0.41,0.51,0.41h3.99c0.23,0,0.47-0.17,0.51-0.41l0.36-2.54c0.61-0.24,1.17-0.56,1.67-0.94l2.39,0.96 c0.22,0.08,0.47,0,0.59-0.22l1.92-3.32c0.12-0.21,0.07-0.49-0.12-0.61L19.14,12.94z M12,15.6c-2.21,0-4-1.79-4-4s1.79-4,4-4 s4,1.79,4,4S14.21,15.6,12,15.6z" />
+        <button id="btnCloseSettings" class="close-modal" type="button" aria-label="Schließen">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
           </svg>
         </button>
       </div>
 
-      <!-- Ist-Höhe Anzeige -->
-      <div class="height-readout"><span id="h">0.0</span> cm</div>
-      <p id="mode" class="sub">Modus: Idle</p>
+      <!-- Section 1: Offset & Limits -->
+      <div class="settings-section">
+        <div class="section-title">
+          <svg class="section-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M12 20V4M5 11l7-7 7 7"/>
+          </svg>
+          <span>Höhen-Offset &amp; Limiten</span>
+        </div>
+        <p class="sub text-left">Der Sensor-Offset (Totbereich / Montagehöhe) wird zur gemessenen Distanz addiert.</p>
 
-      <!-- Sollwert-Eingabe -->
-      <div class="target-box">
-        <label for="targetInput" class="target-label">Sollwert anfahren (cm):</label>
-        <div class="target-row">
-          <input id="targetInput" type="number" step="0.5" placeholder="z.B. 105.0" />
-          <button id="btnStartTarget" class="primary" type="button">Start</button>
+        <div class="field-col">
+          <label for="sensorOffset">Sensor-Offset / Totbereich</label>
+          <div class="input-unit-wrapper">
+            <input id="sensorOffset" type="number" step="0.5" placeholder="z.B. 15.0" />
+            <span class="input-unit">cm</span>
+          </div>
+        </div>
+
+        <div class="limits-grid">
+          <div class="field-col">
+            <label for="limitMin">Untere Limite</label>
+            <div class="input-unit-wrapper">
+              <input id="limitMin" type="number" step="0.5" placeholder="65.0" />
+              <span class="input-unit">cm</span>
+            </div>
+          </div>
+          <div class="field-col">
+            <label for="limitMax">Obere Limite</label>
+            <div class="input-unit-wrapper">
+              <input id="limitMax" type="number" step="0.5" placeholder="125.0" />
+              <span class="input-unit">cm</span>
+            </div>
+          </div>
+        </div>
+
+        <button id="btnSaveSettings" class="btn btn-primary full-width" type="button">
+          Offset &amp; Limiten speichern
+        </button>
+        <p id="settingsFeedback" class="feedback-msg"></p>
+      </div>
+
+      <div class="modal-divider"></div>
+
+      <!-- Section 2: WiFi -->
+      <div class="settings-section">
+        <div class="section-title">
+          <svg class="section-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M5 12.55a11 11 0 0 1 14.08 0M1.42 9a16 16 0 0 1 21.16 0M8.53 16.11a6 6 0 0 1 6.95 0M12 20h.01"/>
+          </svg>
+          <span>WLAN-Verbindung</span>
+        </div>
+
+        <div class="wifi-status-card">
+          <span class="wifi-pulse-dot" aria-hidden="true"></span>
+          <p id="wifiStatus" class="sub">Lade WLAN-Status...</p>
+        </div>
+
+        <div class="wifi-form">
+          <div class="field-col">
+            <label for="wifiSsid">Netzwerkname (SSID)</label>
+            <input id="wifiSsid" type="text" placeholder="SSID eingeben" maxlength="63" />
+          </div>
+          <div class="field-col">
+            <label for="wifiPass">Passwort</label>
+            <input id="wifiPass" type="password" placeholder="Neues Passwort (optional)" />
+          </div>
+          <button id="btnWifiSave" class="btn btn-secondary full-width" type="button">
+            WLAN speichern &amp; Neustart
+          </button>
+        </div>
+        <p id="wifiFeedback" class="feedback-msg"></p>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════
+       MAIN CONTENT
+  ════════════════════════════════════════ -->
+  <main class="container">
+
+    <!-- CONTROL CARD -->
+    <section class="card card-hero">
+
+      <!-- Header -->
+      <header class="card-header">
+        <div class="brand">
+          <div class="brand-badge" aria-hidden="true">
+            <svg class="brand-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="17 11 12 6 7 11"/><polyline points="17 18 12 13 7 18"/>
+            </svg>
+          </div>
+          <div class="brand-text">
+            <h1>Liftoff</h1>
+            <span class="brand-tag">Desk Controller</span>
+          </div>
+        </div>
+        <button id="btnOpenSettings" class="icon-btn" type="button"
+          title="Einstellungen (Offset, Limiten &amp; WLAN)"
+          aria-label="Einstellungen öffnen">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+          </svg>
+        </button>
+      </header>
+
+      <!-- Height Readout -->
+      <div class="readout-card">
+        <div class="readout-label">Aktuelle Höhe</div>
+        <div class="height-readout">
+          <span id="h">0.0</span><span class="unit">cm</span>
+        </div>
+        <div class="mode-badge-wrap">
+          <p id="mode" class="mode-badge">Modus: Idle</p>
+        </div>
+      </div>
+
+      <!-- Target Input (Sollwert) -->
+      <div class="target-card">
+        <label for="targetInput" class="target-label">
+          <svg class="target-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/>
+          </svg>
+          Sollwert direkt anfahren
+        </label>
+        <div class="target-control-group">
+          <div class="target-input-wrapper">
+            <input id="targetInput" type="number" step="0.5" placeholder="z.B. 105.0" />
+            <span class="target-unit">cm</span>
+          </div>
+          <button id="btnStartTarget" class="btn btn-accent" type="button">
+            <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+              <polygon points="5 3 19 12 5 21 5 3"/>
+            </svg>
+            Anfahren
+          </button>
         </div>
         <p id="targetHint" class="target-hint"></p>
       </div>
 
-      <!-- Manuelle Steuerung (Ohne Nullpunkt) -->
-      <div class="row">
-        <button id="btnUp" class="primary" type="button">Hoch</button>
-        <button id="btnDown" class="primary" type="button">Runter</button>
-        <button id="btnStop" class="danger" type="button">Stopp</button>
+      <!-- Manual Controls -->
+      <div class="manual-controls">
+        <div class="direction-buttons">
+          <button id="btnUp" class="btn btn-control btn-up" type="button">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <polyline points="18 15 12 9 6 15"/>
+            </svg>
+            Hoch
+          </button>
+          <button id="btnDown" class="btn btn-control btn-down" type="button">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <polyline points="6 9 12 15 18 9"/>
+            </svg>
+            Runter
+          </button>
+        </div>
+        <button id="btnStop" class="btn btn-stop" type="button">
+          <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <rect x="6" y="6" width="12" height="12" rx="2"/>
+          </svg>
+          STOPP
+        </button>
       </div>
+
     </section>
 
-    <section class="card">
-      <h2>Presets</h2>
-      <div id="presets"></div>
-      <div class="row preset-add-row">
-        <input id="presetName" type="text" placeholder="Preset-Name (z.B. Stehen)" maxlength="24" />
-        <button id="btnAddPreset" class="primary" type="button">+ Aktuelle Höhe speichern</button>
+    <!-- PRESETS CARD -->
+    <section class="card card-presets">
+
+      <div class="presets-header">
+        <div class="section-title">
+          <svg class="section-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/>
+          </svg>
+          <h2>Gespeicherte Positionen</h2>
+        </div>
       </div>
+
+      <div id="presets" class="presets-container"></div>
+
+      <div class="preset-create-box">
+        <div class="preset-add-row">
+          <input id="presetName" type="text" placeholder="Name (z.B. Sitzen, Stehen)" maxlength="24" />
+          <button id="btnAddPreset" class="btn btn-secondary btn-add-preset" type="button">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+            </svg>
+            Speichern
+          </button>
+        </div>
+      </div>
+
     </section>
   </main>
+
   <script src="script.js"></script>
 </body>
 </html>
